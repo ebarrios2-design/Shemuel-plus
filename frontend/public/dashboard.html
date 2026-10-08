@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Panel — Shemuel Plus</title>
+<link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+
+<header class="dash-header">
+  <div class="wrap">
+    <div class="brand">
+      <span class="brand-name">Shemuel Plus</span>
+      <span class="brand-tenant" data-tenant-slug></span>
+    </div>
+    <div style="display:flex; align-items:center; gap:14px;">
+      <span class="pill" id="rol-pill">rol</span>
+      <a class="btn btn-ghost" href="#" id="logout">Salir</a>
+    </div>
+  </div>
+</header>
+
+<div class="dash-body">
+  <div class="wrap">
+    <h1>Hola, <span id="nombre-usuario">—</span></h1>
+    <p class="dash-sub" id="rol-descripcion">Cargando tu panel…</p>
+
+    <div id="contenido">
+      <table class="data" id="tabla-asignaciones" style="display:none">
+        <thead>
+          <tr>
+            <th>Estudiante</th>
+            <th>Docente</th>
+            <th>Entidad receptora</th>
+            <th>Estado</th>
+            <th>Horas</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+
+      <div class="empty-state" id="vacio" style="display:none">
+        Todavía no hay asignaciones de práctica registradas en esta institución.
+      </div>
+
+      <div id="resumen-director" style="display:none; margin-top:8px;"></div>
+    </div>
+  </div>
+</div>
+
+<script src="js/tenant.js"></script>
+<script>
+  const token = localStorage.getItem('shemuel_token');
+  const usuario = JSON.parse(localStorage.getItem('shemuel_user') || 'null');
+
+  if (!token || !usuario) {
+    window.location.href = 'login.html';
+  }
+
+  document.getElementById('nombre-usuario').textContent = usuario.nombre;
+  document.getElementById('rol-pill').textContent = usuario.rol.replace('_', ' ');
+
+  const descripcionesPorRol = {
+    estudiante: 'Consulta tu asignación de práctica y el avance de tus horas.',
+    docente_asesor: 'Estas son las asignaciones que tienes bajo acompañamiento.',
+    institucion_receptora: 'Asignaciones vinculadas con tu institución receptora.',
+    director: 'Vista consolidada de las prácticas activas en tu programa.',
+  };
+  document.getElementById('rol-descripcion').textContent = descripcionesPorRol[usuario.rol] || '';
+
+  document.getElementById('logout').addEventListener('click', () => {
+    localStorage.removeItem('shemuel_token');
+    localStorage.removeItem('shemuel_user');
+    window.location.href = 'login.html';
+  });
+
+  cargarInstitucion().catch((err) => console.error(err));
+
+  async function cargarAsignaciones() {
+    const slug = detectarTenantSlug();
+    const res = await fetch(`${API_BASE}/api/practicas/asignaciones`, {
+      headers: { Authorization: `Bearer ${token}`, 'X-Tenant': slug },
+    });
+
+    if (res.status === 401 || res.status === 403) {
+      localStorage.removeItem('shemuel_token');
+      window.location.href = 'login.html';
+      return;
+    }
+
+    const asignaciones = await res.json();
+    const tabla = document.getElementById('tabla-asignaciones');
+    const vacio = document.getElementById('vacio');
+
+    if (!Array.isArray(asignaciones) || asignaciones.length === 0) {
+      vacio.style.display = 'block';
+      return;
+    }
+
+    tabla.style.display = 'table';
+    const tbody = tabla.querySelector('tbody');
+    tbody.innerHTML = asignaciones
+      .map(
+        (a) => `
+      <tr>
+        <td>${a.estudiante}</td>
+        <td>${a.docente}</td>
+        <td>${a.institucion_receptora}</td>
+        <td>${a.estado}</td>
+        <td>${a.horas_cumplidas} / ${a.horas_requeridas}</td>
+      </tr>`
+      )
+      .join('');
+  }
+
+  async function cargarResumenSiEsDirector() {
+    if (usuario.rol !== 'director') return;
+    const slug = detectarTenantSlug();
+    const res = await fetch(`${API_BASE}/api/reportes/resumen`, {
+      headers: { Authorization: `Bearer ${token}`, 'X-Tenant': slug },
+    });
+    if (!res.ok) return;
+
+    const r = await res.json();
+    const box = document.getElementById('resumen-director');
+    box.style.display = 'block';
+    box.innerHTML = `
+      <table class="data">
+        <thead><tr><th>Estudiantes</th><th>Docentes</th><th>% promedio horas cumplidas</th></tr></thead>
+        <tbody><tr>
+          <td>${r.total_estudiantes}</td>
+          <td>${r.total_docentes}</td>
+          <td>${r.porcentajePromedioHorasCumplidas}%</td>
+        </tr></tbody>
+      </table>`;
+  }
+
+  cargarAsignaciones().then(cargarResumenSiEsDirector).catch(console.error);
+</script>
+</body>
+</html>
