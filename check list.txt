@@ -1,0 +1,33 @@
+1. Verificar Bases de Datos
+
+PostgreSQL: Asegúrate de que el motor de base de datos local esté activo. Abrir pgAdmin y comprobar que la base de datos responde es la forma más rápida de validarlo.
+
+MongoDB Atlas: Como tu URI apunta a un clúster en la nube, solo necesitas confirmar que el equipo tenga conexión a internet para que el backend pueda enlazar los esquemas flexibles.
+
+2. Levantar el Backend (Lógica y API)
+
+Abre tu primera terminal.
+
+Navega a la ruta exacta del servidor: cd D:\UDI\Proyecto integrador 2026-2\shemuel plus\backend
+
+Inicia el servicio en modo desarrollo: npm run dev
+
+Señal de éxito: La consola imprime [postgres] Conexion verificada y te indica que la aplicación está escuchando en el puerto 4000. (Minimiza esta terminal, no la cierres).
+
+3. Levantar el Frontend (Interfaz Visual)
+
+Abre una segunda terminal (una pestaña nueva).
+
+Navega a la carpeta donde viven tus archivos estáticos: cd D:\UDI\Proyecto integrador 2026-2\shemuel plus\frontend\public
+
+Ejecuta el servidor ligero: npx serve .
+
+Señal de éxito: La terminal te mostrará un mensaje indicando que el contenido se está sirviendo en http://localhost:3000.
+
+4. Acceder al Entorno de Trabajo
+
+Abre tu navegador web.
+
+Carga la landing page inyectando el parámetro de tu institución: http://localhost:3000/index.html?tenant=udi
+
+A partir de este punto, puedes abrir tu editor de código, realizar todos los cambios que quieras en el HTML o CSS, guardar el archivo y simplemente refrescar (F5) el navegador para ver los resultados al instante.
