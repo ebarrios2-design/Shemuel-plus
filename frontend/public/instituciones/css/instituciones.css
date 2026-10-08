@@ -1,0 +1,123 @@
+/* Reseteos básicos */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+a { text-decoration: none; color: inherit; }
+
+.wrap-inst {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px;
+}
+
+/* =========================================
+   TEMA UDI
+   ========================================= */
+.tema-udi .top-bar {
+  background-color: #333333;
+  color: white;
+  padding: 10px 0;
+  font-size: 14px;
+}
+.tema-udi .top-bar .wrap-inst {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+.tema-udi .top-bar a:hover { color: #ccc; }
+
+.udi-banner {
+  background-color: #004b9b;
+  color: white;
+  padding: 80px 20px;
+  text-align: right;
+  background-image: radial-gradient(circle at 20% 50%, rgba(255,255,255,0.1) 0%, transparent 50%);
+}
+
+.grid-iconos {
+  display: flex;
+  justify-content: center;
+  gap: 40px;
+  padding: 40px 0;
+  text-align: center;
+  flex-wrap: wrap;
+}
+.icono-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #333;
+  width: 120px;
+  transition: transform 0.2s;
+}
+.icono-item:hover { transform: translateY(-5px); }
+.circulo {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background-color: #fff;
+  border: 3px solid #004b9b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+.destacado { color: #004b9b; font-weight: bold; }
+.destacado .shemuel-icon { background-color: #ffcc00; border-color: #ffcc00; }
+
+/* =========================================
+   TEMA UAN
+   ========================================= */
+.tema-uan .header-uan {
+  background-color: #ffffff;
+  padding: 20px 0;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+.tema-uan .flex-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.logo-uan {
+  font-size: 24px;
+  color: #1e3a5f;
+}
+.nav-uan {
+  display: flex;
+  gap: 20px;
+  font-size: 15px;
+  color: #333;
+}
+.nav-uan a:hover { color: #800020; }
+.nav-uan .destacado {
+  color: #800020;
+  font-weight: 600;
+}
+
+.uan-banner {
+  background-color: #1e3a5f; /* Color base si no hay imagen */
+  background-image: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url('https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=1200&q=80');
+  background-size: cover;
+  background-position: center;
+  color: white;
+  padding: 100px 20px;
+  text-align: center;
+}
+.uan-banner h1 { font-size: 3rem; margin-bottom: 10px; }
+.uan-banner h2 { font-size: 1.5rem; font-style: italic; margin-bottom: 30px; }
+
+.modalidades {
+  display: flex;
+  justify-content: center;
+  gap: 15px;
+}
+.modalidades span {
+  background-color: rgba(255,255,255,0.2);
+  border: 1px solid white;
+  padding: 8px 20px;
+  border-radius: 20px;
+  backdrop-filter: blur(5px);
+}

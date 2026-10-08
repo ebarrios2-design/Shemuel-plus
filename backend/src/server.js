@@ -3,7 +3,7 @@ const app = require('./app');
 const { pool } = require('./config/postgres');
 const { connectMongo } = require('./config/mongo');
 
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 6000;
 
 async function start() {
   try {

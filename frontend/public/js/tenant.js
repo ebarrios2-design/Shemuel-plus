@@ -1,36 +1,41 @@
 // ============================================================
-// Deteccion de tenant + branding compartido entre las 3 paginas.
+// Deteccion de tenant + branding compartido entre las paginas.
 //
-// En produccion el subdominio real ya viene en location.hostname
-// (udi.shemuel.app). En desarrollo local, como no siempre hay DNS
-// configurado, se acepta:
-//   1. udi.localhost:4000  (subdominio real de localhost)
-//   2. ?tenant=udi en la URL
-//   3. valor guardado en localStorage de una visita anterior
+// El tenant debe ser explícito para evitar que una solicitud se resuelva para
+// otra universidad. En producción se toma del subdominio; en desarrollo
+// se toma de ?tenant=udi o del encabezado X-Tenant enviado por el cliente.
 // ============================================================
 
-const API_BASE = window.location.port === '4000'
-  ? '' // servido por el mismo backend Express (mismo host:puerto)
+const API_BASE = window.location.protocol === 'file:'
+  ? 'http://localhost:4000'
   : `${window.location.protocol}//${window.location.hostname}:4000`;
 
 function detectarTenantSlug() {
-  const host = window.location.hostname;
-
-  if (host.includes('.localhost')) {
-    return host.split('.localhost')[0];
-  }
-
   const params = new URLSearchParams(window.location.search);
-  if (params.get('tenant')) {
-    localStorage.setItem('shemuel_tenant', params.get('tenant'));
-    return params.get('tenant');
+  const slugFromUrl = params.get('tenant')?.trim().toLowerCase();
+  const baseDomain = window.location.hostname.split('.').slice(-2).join('.');
+  const slugFromHost = window.location.hostname.startsWith('localhost')
+    ? null
+    : window.location.hostname.replace(`.${baseDomain}`, '');
+  const slugFromStorage = localStorage.getItem('shemuel_tenant');
+
+  const slug = slugFromUrl || slugFromHost || slugFromStorage;
+
+  if (!slug || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+    throw new Error('No se pudo determinar un tenant válido. Abre la URL con ?tenant=udi o ?tenant=uan.');
   }
 
-  if (localStorage.getItem('shemuel_tenant')) {
-    return localStorage.getItem('shemuel_tenant');
-  }
+  localStorage.setItem('shemuel_tenant', slug);
+  return slug;
+}
 
-  return 'udi'; // fallback de demo
+function redirectToLogin(tenant) {
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(tenant)) return;
+
+  const loginUrl = new URL('../login.html', window.location.href);
+  loginUrl.searchParams.set('tenant', tenant);
+  localStorage.setItem('shemuel_tenant', tenant);
+  window.location.assign(loginUrl.toString());
 }
 
 async function cargarInstitucion() {

@@ -29,14 +29,17 @@
     </form>
 
     <p class="auth-hint">
-      Usuario de prueba (datos semilla): <code>estudiante@udi.demo</code> / <code>Practica2026*</code>
+      Usuario de prueba (datos locales): <code>atarazona1@udi.edu.co</code> / <code>admin</code>
     </p>
   </div>
 </div>
 
 <script src="js/tenant.js"></script>
 <script>
-  cargarInstitucion().catch((err) => console.error(err));
+  cargarInstitucion().catch((err) => {
+    document.getElementById('error').textContent = err.message;
+    document.getElementById('error').style.display = 'block';
+  });
 
   document.getElementById('login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -45,7 +48,15 @@
 
     const email = document.getElementById('email').value;
     const password = document.getElementById('password').value;
-    const slug = detectarTenantSlug();
+
+    let slug;
+    try {
+      slug = detectarTenantSlug();
+    } catch (err) {
+      errorBox.textContent = err.message;
+      errorBox.style.display = 'block';
+      return;
+    }
 
     try {
       const res = await fetch(`${API_BASE}/api/auth/login`, {

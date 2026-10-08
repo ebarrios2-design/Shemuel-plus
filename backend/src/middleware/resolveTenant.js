@@ -15,21 +15,26 @@ async function resolveTenant(req, res, next) {
   try {
     const host = req.hostname || '';
     const baseDomain = process.env.BASE_DOMAIN || 'shemuel.app';
+    const tenantHeader = typeof req.headers['x-tenant'] === 'string'
+      ? req.headers['x-tenant'].trim().toLowerCase()
+      : null;
+    const tenantQuery = typeof req.query.tenant === 'string'
+      ? req.query.tenant.trim().toLowerCase()
+      : null;
 
     let subdominio = null;
 
     if (host.endsWith(`.${baseDomain}`)) {
-      subdominio = host.replace(`.${baseDomain}`, '');
-    } else if (host.includes('.localhost')) {
-      subdominio = host.split('.localhost')[0];
+      subdominio = host.slice(0, -baseDomain.length - 1);
+    } else if (process.env.NODE_ENV !== 'production') {
+      subdominio = tenantQuery || tenantHeader;
     } else {
-      // Fallback para pruebas: header o query param explicito
-      subdominio = req.headers['x-tenant'] || req.query.tenant || null;
+      subdominio = tenantHeader || tenantQuery;
     }
 
-    if (!subdominio) {
+    if (!subdominio || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(subdominio)) {
       return res.status(400).json({
-        error: 'No se pudo determinar la institucion (subdominio) de la peticion.',
+        error: 'No se pudo determinar un tenant válido.',
       });
     }
 
