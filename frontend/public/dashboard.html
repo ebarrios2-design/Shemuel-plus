@@ -45,6 +45,172 @@
       </div>
 
       <div id="resumen-director" style="display:none; margin-top:8px;"></div>
+
+      <section id="admin-usuarios" class="admin-panel" style="display:none; margin-top:28px;">
+        <div class="admin-header">
+          <h2>Gestión de usuarios y roles</h2>
+          <button type="button" class="btn btn-primary" id="btn-nuevo-usuario">Nuevo usuario</button>
+        </div>
+
+        <form id="form-usuario" class="admin-form">
+          <input type="hidden" id="usuario-id" />
+
+          <div class="form-grid">
+            <div class="field">
+              <label for="nombre-completo">Nombre completo</label>
+              <input id="nombre-completo" type="text" required />
+            </div>
+
+            <div class="field">
+              <label for="email-usuario">Correo institucional</label>
+              <input id="email-usuario" type="email" required />
+            </div>
+
+            <div class="field">
+              <label for="rol-usuario">Rol</label>
+              <select id="rol-usuario" required></select>
+            </div>
+
+            <div class="field">
+              <label for="password-usuario">Contraseña</label>
+              <input id="password-usuario" type="password" placeholder="Dejar vacío para mantener la actual" />
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <label class="checkbox-row">
+              <input id="usuario-activo" type="checkbox" checked />
+              <span>Usuario activo</span>
+            </label>
+            <button type="submit" class="btn btn-primary">Guardar usuario</button>
+            <button type="button" class="btn btn-ghost" id="btn-cancelar-edicion">Cancelar</button>
+          </div>
+        </form>
+
+        <div class="table-wrap">
+          <table class="data" id="tabla-usuarios">
+            <thead>
+              <tr>
+                <th>Nombre</th>
+                <th>Email</th>
+                <th>Rol</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="admin-practicas" class="admin-panel" style="display:none; margin-top:28px;">
+        <div class="admin-header">
+          <h2>Asignación de práctica</h2>
+        </div>
+
+        <form id="form-asignacion" class="admin-form">
+          <div class="form-grid">
+            <div class="field">
+              <label for="sel-estudiante">Estudiante</label>
+              <select id="sel-estudiante" required></select>
+            </div>
+
+            <div class="field">
+              <label for="sel-docente">Docente asesor</label>
+              <select id="sel-docente" required></select>
+            </div>
+
+            <div class="field">
+              <label for="sel-institucion-receptora">Institución receptora</label>
+              <select id="sel-institucion-receptora" required></select>
+            </div>
+
+            <div class="field">
+              <label for="fecha-inicio">Fecha de inicio</label>
+              <input id="fecha-inicio" type="date" required />
+            </div>
+
+            <div class="field">
+              <label for="fecha-fin">Fecha de fin</label>
+              <input id="fecha-fin" type="date" />
+            </div>
+
+            <div class="field">
+              <label for="horas-requeridas">Horas requeridas</label>
+              <input id="horas-requeridas" type="number" min="1" value="120" required />
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Crear asignación</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="panel-seguimiento" class="admin-panel" style="display:none; margin-top:28px;">
+        <div class="admin-header">
+          <h2>Seguimiento de práctica</h2>
+        </div>
+
+        <div class="form-grid">
+          <div class="field">
+            <label for="asignacion-seguimiento">Asignación activa</label>
+            <select id="asignacion-seguimiento"></select>
+          </div>
+
+          <div class="field">
+            <label for="horas-cumplidas">Horas cumplidas</label>
+            <input id="horas-cumplidas" type="number" min="0" value="0" />
+          </div>
+        </div>
+
+        <div class="form-actions">
+          <button type="button" class="btn btn-primary" id="btn-registrar-horas">Registrar horas</button>
+        </div>
+
+        <form id="form-plan-clase" class="admin-form" style="margin-top:20px;">
+          <h3>Plan de clase</h3>
+          <div class="form-grid">
+            <div class="field">
+              <label for="plan-titulo">Título</label>
+              <input id="plan-titulo" type="text" required />
+            </div>
+            <div class="field">
+              <label for="plan-area">Área</label>
+              <input id="plan-area" type="text" placeholder="Matemáticas, lenguaje, etc." />
+            </div>
+          </div>
+          <div class="field">
+            <label for="plan-contenido">Contenido</label>
+            <textarea id="plan-contenido" rows="5" required></textarea>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Guardar plan</button>
+          </div>
+        </form>
+
+        <form id="form-observacion" class="admin-form">
+          <h3>Observación pedagógica</h3>
+          <div class="form-grid">
+            <div class="field">
+              <label for="obs-categoria">Categoría</label>
+              <select id="obs-categoria">
+                <option value="seguimiento">Seguimiento</option>
+                <option value="visita">Visita</option>
+                <option value="alerta">Alerta</option>
+                <option value="cierre">Cierre</option>
+              </select>
+            </div>
+          </div>
+          <div class="field">
+            <label for="obs-texto">Observación</label>
+            <textarea id="obs-texto" rows="5" required></textarea>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Guardar observación</button>
+          </div>
+        </form>
+      </section>
     </div>
   </div>
 </div>
@@ -125,18 +291,372 @@
     const r = await res.json();
     const box = document.getElementById('resumen-director');
     box.style.display = 'block';
+
+    const filasEstado = (r.asignacionesPorEstado || [])
+      .map((estado) => `<li><strong>${estado.estado}</strong>: ${estado.cantidad}</li>`)
+      .join('');
+
+    const filasTop = (r.topEstudiantes || [])
+      .map((item) => `<tr><td>${item.estudiante}</td><td>${item.horas_cumplidas}</td><td>${item.horas_requeridas}</td><td>${item.porcentaje_cumplimiento || 0}%</td><td>${item.estado}</td></tr>`)
+      .join('');
+
     box.innerHTML = `
-      <table class="data">
-        <thead><tr><th>Estudiantes</th><th>Docentes</th><th>% promedio horas cumplidas</th></tr></thead>
-        <tbody><tr>
-          <td>${r.total_estudiantes}</td>
-          <td>${r.total_docentes}</td>
-          <td>${r.porcentajePromedioHorasCumplidas}%</td>
-        </tr></tbody>
-      </table>`;
+      <div class="summary-cards">
+        <div class="summary-card"><span>Estudiantes</span><strong>${r.total_estudiantes || 0}</strong></div>
+        <div class="summary-card"><span>Docentes</span><strong>${r.total_docentes || 0}</strong></div>
+        <div class="summary-card"><span>Asignaciones</span><strong>${r.totalAsignaciones || 0}</strong></div>
+        <div class="summary-card"><span>% cumplimiento</span><strong>${r.porcentajePromedioHorasCumplidas || 0}%</strong></div>
+      </div>
+      <div class="summary-grid">
+        <div>
+          <h3>Estado de asignaciones</h3>
+          <ul class="status-list">${filasEstado || '<li>Sin registros</li>'}</ul>
+        </div>
+        <div>
+          <h3>Top estudiantes</h3>
+          <table class="data compact">
+            <thead><tr><th>Estudiante</th><th>Horas</th><th>Requeridas</th><th>%</th><th>Estado</th></tr></thead>
+            <tbody>${filasTop || '<tr><td colspan="5">Sin estudiantes</td></tr>'}</tbody>
+          </table>
+        </div>
+      </div>`;
   }
 
-  cargarAsignaciones().then(cargarResumenSiEsDirector).catch(console.error);
+  async function cargarRoles() {
+    if (usuario.rol !== 'director') return [];
+    const slug = detectarTenantSlug();
+    const res = await fetch(`${API_BASE}/api/roles`, {
+      headers: { Authorization: `Bearer ${token}`, 'X-Tenant': slug },
+    });
+    if (!res.ok) return [];
+    const roles = await res.json();
+    const select = document.getElementById('rol-usuario');
+    select.innerHTML = roles
+      .map((rol) => `<option value="${rol}">${rol.replace('_', ' ')}</option>`)
+      .join('');
+    return roles;
+  }
+
+  async function cargarUsuarios() {
+    if (usuario.rol !== 'director') return;
+    const slug = detectarTenantSlug();
+    const res = await fetch(`${API_BASE}/api/usuarios`, {
+      headers: { Authorization: `Bearer ${token}`, 'X-Tenant': slug },
+    });
+    if (!res.ok) {
+      console.error('No se pudo cargar usuarios');
+      return;
+    }
+
+    const usuariosDelSistema = await res.json();
+    const tbody = document.querySelector('#tabla-usuarios tbody');
+    const adminPanel = document.getElementById('admin-usuarios');
+    adminPanel.style.display = 'block';
+
+    tbody.innerHTML = usuariosDelSistema.map((u) => `
+      <tr>
+        <td>${u.nombre_completo}</td>
+        <td>${u.email}</td>
+        <td>${u.rol.replace('_', ' ')}</td>
+        <td>${u.activo ? 'Activo' : 'Inactivo'}</td>
+        <td>
+          <button class="btn btn-ghost btn-small" data-action="edit" data-id="${u.id}">Editar</button>
+          <button class="btn btn-ghost btn-small" data-action="delete" data-id="${u.id}">Eliminar</button>
+        </td>
+      </tr>
+    `).join('');
+
+    tbody.querySelectorAll('button[data-action="edit"]').forEach((btn) => {
+      btn.addEventListener('click', () => prepararEdicion(btn.dataset.id));
+    });
+
+    tbody.querySelectorAll('button[data-action="delete"]').forEach((btn) => {
+      btn.addEventListener('click', () => eliminarUsuario(btn.dataset.id));
+    });
+  }
+
+  async function cargarSelectoresPracticas() {
+    if (usuario.rol !== 'director') return;
+    const slug = detectarTenantSlug();
+
+    const [estudiantes, docentes, instituciones] = await Promise.all([
+      fetch(`${API_BASE}/api/practicas/usuarios/estudiante`, { headers: { Authorization: `Bearer ${token}`, 'X-Tenant': slug } }),
+      fetch(`${API_BASE}/api/practicas/usuarios/docente_asesor`, { headers: { Authorization: `Bearer ${token}`, 'X-Tenant': slug } }),
+      fetch(`${API_BASE}/api/practicas/instituciones-receptoras`, { headers: { Authorization: `Bearer ${token}`, 'X-Tenant': slug } }),
+    ]);
+
+    const estudiantesData = estudiantes.ok ? await estudiantes.json() : [];
+    const docentesData = docentes.ok ? await docentes.json() : [];
+    const institucionesData = instituciones.ok ? await instituciones.json() : [];
+
+    const selEstudiante = document.getElementById('sel-estudiante');
+    selEstudiante.innerHTML = estudiantesData.length
+      ? estudiantesData.map((u) => `<option value="${u.id}">${u.nombre_completo}</option>`).join('')
+      : '<option value="">Sin estudiantes</option>';
+
+    const selDocente = document.getElementById('sel-docente');
+    selDocente.innerHTML = docentesData.length
+      ? docentesData.map((u) => `<option value="${u.id}">${u.nombre_completo}</option>`).join('')
+      : '<option value="">Sin docentes</option>';
+
+    const selInstitucion = document.getElementById('sel-institucion-receptora');
+    selInstitucion.innerHTML = institucionesData.length
+      ? institucionesData.map((i) => `<option value="${i.id}">${i.nombre}</option>`).join('')
+      : '<option value="">Sin instituciones</option>';
+
+    document.getElementById('admin-practicas').style.display = 'block';
+  }
+
+  async function cargarSeguimientoUsuario() {
+    if (!['estudiante', 'docente_asesor'].includes(usuario.rol)) return;
+    const slug = detectarTenantSlug();
+    const res = await fetch(`${API_BASE}/api/practicas/asignaciones`, {
+      headers: { Authorization: `Bearer ${token}`, 'X-Tenant': slug },
+    });
+    if (!res.ok) return;
+
+    const asignaciones = await res.json();
+    const asignacionesFiltradas = asignaciones.filter((a) => {
+      if (usuario.rol === 'estudiante') return a.estudiante_id === usuario.id || a.estudiante === usuario.nombre;
+      return a.docente_id === usuario.id || a.docente === usuario.nombre;
+    });
+
+    const sel = document.getElementById('asignacion-seguimiento');
+    sel.innerHTML = asignacionesFiltradas.length
+      ? asignacionesFiltradas.map((a) => `<option value="${a.id}">${a.estudiante} / ${a.docente}</option>`).join('')
+      : '<option value="">Sin asignaciones</option>';
+
+    const panel = document.getElementById('panel-seguimiento');
+    panel.style.display = 'block';
+  }
+
+  function resetFormulario() {
+    document.getElementById('usuario-id').value = '';
+    document.getElementById('nombre-completo').value = '';
+    document.getElementById('email-usuario').value = '';
+    document.getElementById('password-usuario').value = '';
+    document.getElementById('usuario-activo').checked = true;
+    const select = document.getElementById('rol-usuario');
+    if (select.options.length > 0) {
+      select.selectedIndex = 0;
+    }
+  }
+
+  async function prepararEdicion(id) {
+    const slug = detectarTenantSlug();
+    const res = await fetch(`${API_BASE}/api/usuarios`, {
+      headers: { Authorization: `Bearer ${token}`, 'X-Tenant': slug },
+    });
+    if (!res.ok) return;
+
+    const usuariosDelSistema = await res.json();
+    const usuario = usuariosDelSistema.find((u) => u.id === id);
+    if (!usuario) return;
+
+    document.getElementById('usuario-id').value = usuario.id;
+    document.getElementById('nombre-completo').value = usuario.nombre_completo;
+    document.getElementById('email-usuario').value = usuario.email;
+    document.getElementById('usuario-activo').checked = usuario.activo;
+    document.getElementById('rol-usuario').value = usuario.rol;
+    document.getElementById('password-usuario').value = '';
+    document.getElementById('password-usuario').placeholder = 'Dejar vacío para mantener la actual';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  async function eliminarUsuario(id) {
+    if (!window.confirm('¿Deseas eliminar este usuario?')) return;
+    const slug = detectarTenantSlug();
+    const res = await fetch(`${API_BASE}/api/usuarios/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}`, 'X-Tenant': slug },
+    });
+
+    if (!res.ok) {
+      alert('No se pudo eliminar el usuario.');
+      return;
+    }
+
+    resetFormulario();
+    await cargarUsuarios();
+  }
+
+  document.getElementById('btn-nuevo-usuario').addEventListener('click', () => {
+    resetFormulario();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+
+  document.getElementById('btn-cancelar-edicion').addEventListener('click', resetFormulario);
+
+  document.getElementById('form-usuario').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const slug = detectarTenantSlug();
+    const id = document.getElementById('usuario-id').value;
+    const payload = {
+      nombreCompleto: document.getElementById('nombre-completo').value.trim(),
+      email: document.getElementById('email-usuario').value.trim(),
+      rol: document.getElementById('rol-usuario').value,
+      activo: document.getElementById('usuario-activo').checked,
+    };
+
+    const password = document.getElementById('password-usuario').value.trim();
+    if (password) payload.password = password;
+
+    const method = id ? 'PUT' : 'POST';
+    const url = id ? `${API_BASE}/api/usuarios/${id}` : `${API_BASE}/api/usuarios`;
+
+    const res = await fetch(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        'X-Tenant': slug,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(data.error || 'No se pudo guardar el usuario.');
+      return;
+    }
+
+    resetFormulario();
+    await cargarUsuarios();
+    alert(id ? 'Usuario actualizado correctamente.' : 'Usuario creado correctamente.');
+  });
+
+  document.getElementById('form-asignacion').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const slug = detectarTenantSlug();
+
+    const payload = {
+      estudianteId: document.getElementById('sel-estudiante').value,
+      docenteId: document.getElementById('sel-docente').value,
+      institucionReceptoraId: document.getElementById('sel-institucion-receptora').value,
+      fechaInicio: document.getElementById('fecha-inicio').value,
+      fechaFin: document.getElementById('fecha-fin').value || null,
+      horasRequeridas: Number(document.getElementById('horas-requeridas').value || 0),
+    };
+
+    const res = await fetch(`${API_BASE}/api/practicas/asignaciones`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        'X-Tenant': slug,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(data.error || 'No se pudo crear la asignación.');
+      return;
+    }
+
+    alert('Asignación creada correctamente.');
+    document.getElementById('form-asignacion').reset();
+    await cargarAsignaciones();
+  });
+
+  document.getElementById('btn-registrar-horas').addEventListener('click', async () => {
+    const asignacionId = document.getElementById('asignacion-seguimiento').value;
+    const horas = Number(document.getElementById('horas-cumplidas').value || 0);
+    if (!asignacionId) return;
+
+    const res = await fetch(`${API_BASE}/api/practicas/asignaciones/${asignacionId}/horas`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        'X-Tenant': detectarTenantSlug(),
+      },
+      body: JSON.stringify({ horasCumplidas: horas }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(data.error || 'No se pudo registrar las horas.');
+      return;
+    }
+
+    alert(`Horas registradas: ${data.horas_cumplidas}`);
+  });
+
+  document.getElementById('form-plan-clase').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const tarea = document.getElementById('asignacion-seguimiento').value;
+    if (!tarea) return;
+
+    const payload = {
+      asignacionId: tarea,
+      titulo: document.getElementById('plan-titulo').value,
+      area: document.getElementById('plan-area').value,
+      contenido: document.getElementById('plan-contenido').value,
+    };
+
+    const res = await fetch(`${API_BASE}/api/practicas/planes-clase`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        'X-Tenant': detectarTenantSlug(),
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(data.error || 'No se pudo guardar el plan.');
+      return;
+    }
+
+    alert('Plan de clase guardado.');
+    document.getElementById('form-plan-clase').reset();
+  });
+
+  document.getElementById('form-observacion').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const tarea = document.getElementById('asignacion-seguimiento').value;
+    if (!tarea) return;
+
+    const payload = {
+      asignacionId: tarea,
+      categoria: document.getElementById('obs-categoria').value,
+      observacion: document.getElementById('obs-texto').value,
+    };
+
+    const res = await fetch(`${API_BASE}/api/practicas/observaciones`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        'X-Tenant': detectarTenantSlug(),
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(data.error || 'No se pudo guardar la observación.');
+      return;
+    }
+
+    alert('Observación registrada.');
+    document.getElementById('form-observacion').reset();
+  });
+
+  cargarAsignaciones()
+    .then(async () => {
+      await cargarResumenSiEsDirector();
+      if (usuario.rol === 'director') {
+        await cargarRoles();
+        await cargarUsuarios();
+        await cargarSelectoresPracticas();
+      }
+      await cargarSeguimientoUsuario();
+    })
+    .catch(console.error);
 </script>
 </body>
 </html>

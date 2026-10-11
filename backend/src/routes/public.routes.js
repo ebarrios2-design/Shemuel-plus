@@ -1,3 +1,9 @@
+/**
+ * Rutas publicas del sistema.
+ *
+ * Son accesibles sin autenticacion porque sirven para identificar la
+ * institucion actual y personalizar la UI antes de iniciar sesion.
+ */
 const express = require('express');
 const router = express.Router();
 

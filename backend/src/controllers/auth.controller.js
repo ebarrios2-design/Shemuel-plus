@@ -1,3 +1,10 @@
+/**
+ * Controlador de autenticacion.
+ *
+ * Se conecta con PostgreSQL para validar credenciales de un usuario dentro de
+ * la institucion actual. Si todo sale bien, emite un JWT que luego se usa
+ * para autorizar llamadas a rutas protegidas.
+ */
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { query } = require('../config/postgres');
