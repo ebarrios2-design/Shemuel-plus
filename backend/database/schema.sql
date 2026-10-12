@@ -72,15 +72,15 @@ CREATE TYPE estado_asignacion AS ENUM (
 );
 
 -- ------------------------------------------------------------
--- Asignacion de practica: une estudiante + docente asesor +
--- entidad receptora, dentro de un mismo tenant
+-- Asignacion de practica: pertenece al tenant y puede conservar
+-- una entidad receptora externa opcional por compatibilidad.
 -- ------------------------------------------------------------
 CREATE TABLE asignaciones_practica (
     id                        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     institucion_id            UUID NOT NULL REFERENCES instituciones(id) ON DELETE CASCADE,
     estudiante_id             UUID NOT NULL REFERENCES usuarios(id),
     docente_id                UUID NOT NULL REFERENCES usuarios(id),
-    institucion_receptora_id  UUID NOT NULL REFERENCES instituciones_receptoras(id),
+    institucion_receptora_id  UUID REFERENCES instituciones_receptoras(id),
     fecha_inicio              DATE NOT NULL,
     fecha_fin                 DATE,
     horas_requeridas          INTEGER NOT NULL DEFAULT 0,

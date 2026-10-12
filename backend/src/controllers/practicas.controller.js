@@ -8,7 +8,8 @@
  * La clave es que todas las consultas se filtran con req.tenant.id para
  * mantener el aislamiento de cada universidad.
  */
-const { query } = require('../config/postgres');
+const postgres = require('../config/postgres');
+const query = (...args) => postgres.query(...args);
 const PlanClase = require('../models/mongo/PlanClase');
 const Observacion = require('../models/mongo/Observacion');
 
@@ -80,11 +81,12 @@ async function listarAsignaciones(req, res, next) {
   try {
     const { rows } = await query(
       `SELECT a.*, e.nombre_completo AS estudiante, d.nombre_completo AS docente,
-              ir.nombre AS institucion_receptora
+              COALESCE(ir.nombre, i.nombre) AS institucion
        FROM asignaciones_practica a
        JOIN usuarios e ON e.id = a.estudiante_id
        JOIN usuarios d ON d.id = a.docente_id
-       JOIN instituciones_receptoras ir ON ir.id = a.institucion_receptora_id
+       LEFT JOIN instituciones_receptoras ir ON ir.id = a.institucion_receptora_id
+       JOIN instituciones i ON i.id = a.institucion_id
        WHERE a.institucion_id = $1
        ORDER BY a.creado_en DESC`,
       [req.tenant.id]
@@ -112,7 +114,7 @@ async function crearAsignacion(req, res, next) {
          fecha_inicio, fecha_fin, horas_requeridas)
        VALUES ($1,$2,$3,$4,$5,$6,$7)
        RETURNING *`,
-      [req.tenant.id, estudianteId, docenteId, institucionReceptoraId, fechaInicio, fechaFin, horasRequeridas]
+      [req.tenant.id, estudianteId, docenteId, institucionReceptoraId || null, fechaInicio, fechaFin, horasRequeridas]
     );
 
     res.status(201).json(rows[0]);
@@ -134,9 +136,9 @@ async function actualizarHorasAsignacion(req, res, next) {
       `UPDATE asignaciones_practica
        SET horas_cumplidas = $1,
            estado = CASE
-             WHEN $1 >= horas_requeridas THEN 'finalizada'
-             WHEN $1 > 0 THEN 'en_curso'
-             ELSE 'pendiente'
+             WHEN $1 >= horas_requeridas THEN 'finalizada'::estado_asignacion
+             WHEN $1 > 0 THEN 'en_curso'::estado_asignacion
+             ELSE 'pendiente'::estado_asignacion
            END
        WHERE institucion_id = $2 AND id = $3
        RETURNING *`,
@@ -243,12 +245,27 @@ async function crearObservacion(req, res, next) {
   try {
     const { asignacionId, categoria, observacion, evidenciasUrls } = req.body;
 
+    if (!asignacionId || typeof observacion !== 'string' || !observacion.trim()) {
+      return res.status(400).json({ error: 'Debe indicar la asignación y el contenido del seguimiento.' });
+    }
+
+    const { rows } = await query(
+      `SELECT id
+       FROM asignaciones_practica
+       WHERE institucion_id = $1 AND id = $2 AND docente_id = $3`,
+      [req.tenant.id, asignacionId, req.user.sub]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'Asignación no encontrada para este docente e institución.' });
+    }
+
     const doc = await Observacion.create({
       tenantId: req.tenant.id,
       asignacionId,
       docenteId: req.user.sub,
       categoria,
-      observacion,
+      observacion: observacion.trim(),
       evidenciasUrls,
     });
 

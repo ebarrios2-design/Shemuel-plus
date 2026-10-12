@@ -72,6 +72,10 @@ Usado para contenido con estructura flexible o narrativa, como:
 
 Esto permite guardar documentos con campos variados sin forzar un esquema rígido de SQL.
 
+### Actualización de bases existentes
+
+En bases inicializadas antes de permitir asignaciones sin institución receptora, aplica una vez `backend/database/migrations/001_optional_practice_receiver.sql`.
+
 ## Conexión entre módulos
 
 - `tenant.js` -> llama a `/api/public/institucion` -> `public.routes.js`

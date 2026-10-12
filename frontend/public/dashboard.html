@@ -32,7 +32,7 @@
           <tr>
             <th>Estudiante</th>
             <th>Docente</th>
-            <th>Entidad receptora</th>
+            <th>Institución</th>
             <th>Estado</th>
             <th>Horas</th>
           </tr>
@@ -118,11 +118,6 @@
             <div class="field">
               <label for="sel-docente">Docente asesor</label>
               <select id="sel-docente" required></select>
-            </div>
-
-            <div class="field">
-              <label for="sel-institucion-receptora">Institución receptora</label>
-              <select id="sel-institucion-receptora" required></select>
             </div>
 
             <div class="field">
@@ -272,7 +267,7 @@
       <tr>
         <td>${a.estudiante}</td>
         <td>${a.docente}</td>
-        <td>${a.institucion_receptora}</td>
+        <td>${a.institucion}</td>
         <td>${a.estado}</td>
         <td>${a.horas_cumplidas} / ${a.horas_requeridas}</td>
       </tr>`
@@ -379,15 +374,13 @@
     if (usuario.rol !== 'director') return;
     const slug = detectarTenantSlug();
 
-    const [estudiantes, docentes, instituciones] = await Promise.all([
+    const [estudiantes, docentes] = await Promise.all([
       fetch(`${API_BASE}/api/practicas/usuarios/estudiante`, { headers: { Authorization: `Bearer ${token}`, 'X-Tenant': slug } }),
       fetch(`${API_BASE}/api/practicas/usuarios/docente_asesor`, { headers: { Authorization: `Bearer ${token}`, 'X-Tenant': slug } }),
-      fetch(`${API_BASE}/api/practicas/instituciones-receptoras`, { headers: { Authorization: `Bearer ${token}`, 'X-Tenant': slug } }),
     ]);
 
     const estudiantesData = estudiantes.ok ? await estudiantes.json() : [];
     const docentesData = docentes.ok ? await docentes.json() : [];
-    const institucionesData = instituciones.ok ? await instituciones.json() : [];
 
     const selEstudiante = document.getElementById('sel-estudiante');
     selEstudiante.innerHTML = estudiantesData.length
@@ -398,11 +391,6 @@
     selDocente.innerHTML = docentesData.length
       ? docentesData.map((u) => `<option value="${u.id}">${u.nombre_completo}</option>`).join('')
       : '<option value="">Sin docentes</option>';
-
-    const selInstitucion = document.getElementById('sel-institucion-receptora');
-    selInstitucion.innerHTML = institucionesData.length
-      ? institucionesData.map((i) => `<option value="${i.id}">${i.nombre}</option>`).join('')
-      : '<option value="">Sin instituciones</option>';
 
     document.getElementById('admin-practicas').style.display = 'block';
   }
@@ -532,7 +520,6 @@
     const payload = {
       estudianteId: document.getElementById('sel-estudiante').value,
       docenteId: document.getElementById('sel-docente').value,
-      institucionReceptoraId: document.getElementById('sel-institucion-receptora').value,
       fechaInicio: document.getElementById('fecha-inicio').value,
       fechaFin: document.getElementById('fecha-fin').value || null,
       horasRequeridas: Number(document.getElementById('horas-requeridas').value || 0),

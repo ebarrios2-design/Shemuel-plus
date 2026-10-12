@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const practicas = require('../src/controllers/practicas.controller');
 const postgres = require('../src/config/postgres');
+const Observacion = require('../src/models/mongo/Observacion');
 
 async function withMockedQuery(testFn) {
   const originalQuery = postgres.query;
@@ -75,6 +76,9 @@ test('actualiza horas cumplidas de una asignación', async () => {
   const originalQuery = postgres.query;
   postgres.query = async (text) => {
     if (String(text).includes('UPDATE asignaciones_practica')) {
+      assert.match(text, /'finalizada'::estado_asignacion/);
+      assert.match(text, /'en_curso'::estado_asignacion/);
+      assert.match(text, /'pendiente'::estado_asignacion/);
       return { rows: [{ id: 'a1', horas_cumplidas: 80, horas_requeridas: 120, estado: 'en_curso' }] };
     }
     return { rows: [] };
@@ -112,5 +116,70 @@ test('registra una evaluación académica para la asignación', async () => {
     await practicas.crearEvaluacion(req, res, () => {});
   } finally {
     postgres.query = originalQuery;
+  }
+});
+
+test('crea una asignación sin institución receptora y usa el tenant actual', async () => {
+  const originalQuery = postgres.query;
+  let capturedParams;
+  postgres.query = async (_text, params) => {
+    capturedParams = params;
+    return { rows: [{ id: 'a1', institucion_id: 'tenant-1', institucion_receptora_id: null }] };
+  };
+
+  try {
+    const req = {
+      tenant: { id: 'tenant-1' },
+      body: {
+        estudianteId: 'u1',
+        docenteId: 'd1',
+        fechaInicio: '2026-10-01',
+        fechaFin: null,
+        horasRequeridas: 120,
+      },
+    };
+    const res = { status: (code) => ({ json: (payload) => {
+      assert.equal(code, 201);
+      assert.equal(payload.institucion_id, 'tenant-1');
+    } }) };
+
+    await practicas.crearAsignacion(req, res, () => {});
+    assert.deepEqual(capturedParams, ['tenant-1', 'u1', 'd1', null, '2026-10-01', null, 120]);
+  } finally {
+    postgres.query = originalQuery;
+  }
+});
+
+test('guarda el seguimiento vinculado al tenant, asignación y docente', async () => {
+  const originalQuery = postgres.query;
+  const originalCreate = Observacion.create;
+  let savedObservation;
+  postgres.query = async (_text, params) => {
+    assert.deepEqual(params, ['tenant-1', 'a1', 'd1']);
+    return { rows: [{ id: 'a1' }] };
+  };
+  Observacion.create = async (document) => {
+    savedObservation = document;
+    return document;
+  };
+
+  try {
+    const req = {
+      tenant: { id: 'tenant-1' },
+      user: { sub: 'd1' },
+      body: { asignacionId: 'a1', categoria: 'seguimiento', observacion: '  Visita realizada  ' },
+    };
+    const res = { status: (code) => ({ json: (payload) => {
+      assert.equal(code, 201);
+      assert.equal(payload.observacion, 'Visita realizada');
+    } }) };
+
+    await practicas.crearObservacion(req, res, () => {});
+    assert.equal(savedObservation.tenantId, 'tenant-1');
+    assert.equal(savedObservation.asignacionId, 'a1');
+    assert.equal(savedObservation.docenteId, 'd1');
+  } finally {
+    postgres.query = originalQuery;
+    Observacion.create = originalCreate;
   }
 });
