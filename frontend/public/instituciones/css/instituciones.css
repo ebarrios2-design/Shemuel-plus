@@ -67,6 +67,12 @@ a { text-decoration: none; color: inherit; }
 }
 .destacado { color: #004b9b; font-weight: bold; }
 .destacado .shemuel-icon { background-color: #ffcc00; border-color: #ffcc00; }
+.shemuel-icon-image {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  object-fit: cover;
+}
 
 /* =========================================
    TEMA UAN
@@ -95,6 +101,17 @@ a { text-decoration: none; color: inherit; }
 .nav-uan .destacado {
   color: #800020;
   font-weight: 600;
+}
+.nav-uan .shemuel-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.shemuel-nav-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  object-fit: cover;
 }
 
 .uan-banner {

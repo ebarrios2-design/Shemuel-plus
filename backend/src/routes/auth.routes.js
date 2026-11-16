@@ -6,9 +6,10 @@
  */
 const express = require('express');
 const router = express.Router();
-const { login } = require('../controllers/auth.controller');
+const { verificarCorreo, login } = require('../controllers/auth.controller');
 
-// POST /api/auth/login (requiere que resolveTenant ya haya corrido)
+// Ambas rutas requieren que resolveTenant haya identificado el tenant.
+router.post('/verificar-correo', verificarCorreo);
 router.post('/login', login);
 
 module.exports = router;

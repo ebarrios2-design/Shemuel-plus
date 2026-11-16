@@ -11,6 +11,7 @@
 const express = require('express');
 const router = express.Router();
 const { requireAuth, requireRole } = require('../middleware/auth');
+const requireMongo = require('../middleware/requireMongo');
 const ctrl = require('../controllers/practicas.controller');
 
 router.use(requireAuth);
@@ -30,11 +31,11 @@ router.post('/asignaciones/:id/evaluaciones', requireRole('docente_asesor', 'dir
 router.get('/asignaciones/evaluaciones', requireRole('director', 'docente_asesor'), ctrl.listarEvaluaciones);
 
 // Planes de clase (Mongo)
-router.get('/planes-clase', ctrl.listarPlanesClase);
-router.post('/planes-clase', requireRole('estudiante'), ctrl.crearPlanClase);
+router.get('/planes-clase', requireMongo, ctrl.listarPlanesClase);
+router.post('/planes-clase', requireRole('estudiante'), requireMongo, ctrl.crearPlanClase);
 
 // Observaciones pedagogicas (Mongo)
-router.get('/observaciones', ctrl.listarObservaciones);
-router.post('/observaciones', requireRole('docente_asesor'), ctrl.crearObservacion);
+router.get('/observaciones', requireMongo, ctrl.listarObservaciones);
+router.post('/observaciones', requireRole('docente_asesor'), requireMongo, ctrl.crearObservacion);
 
 module.exports = router;

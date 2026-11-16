@@ -16,7 +16,7 @@ La aplicación se estructura en dos capas principales:
 1. El usuario accede a una URL que identifica el tenant (por ejemplo `?tenant=udi` o un subdominio).
 2. El frontend ejecuta `tenant.js` para detectar el tenant y pedir la información de la institución a `GET /api/public/institucion`.
 3. El backend resuelve el tenant con `resolveTenant`, que consulta la tabla `instituciones` en PostgreSQL.
-4. El usuario hace login usando `/api/auth/login`, que valida credenciales por `institucion_id + email` y devuelve un JWT.
+4. El usuario verifica su correo con `/api/auth/verificar-correo` y después inicia sesión en `/api/auth/login`; ambas operaciones se limitan a `institucion_id`.
 5. Las rutas protegidas validan el token con `requireAuth` y restringen permisos con `requireRole`.
 6. Los controladores consultan datos de PostgreSQL o MongoDB, siempre filtrados por `req.tenant.id`.
 
@@ -72,6 +72,11 @@ Usado para contenido con estructura flexible o narrativa, como:
 
 Esto permite guardar documentos con campos variados sin forzar un esquema rígido de SQL.
 
+El backend puede iniciar y mantener disponibles las funciones respaldadas por PostgreSQL
+si MongoDB no está conectado. En ese caso, las rutas de planes de clase y observaciones
+responden con HTTP 503 hasta que MongoDB esté disponible; PostgreSQL sigue siendo
+requerido para iniciar la API.
+
 ### Actualización de bases existentes
 
 En bases inicializadas antes de permitir asignaciones sin institución receptora, aplica una vez `backend/database/migrations/001_optional_practice_receiver.sql`.
@@ -79,7 +84,7 @@ En bases inicializadas antes de permitir asignaciones sin institución receptora
 ## Conexión entre módulos
 
 - `tenant.js` -> llama a `/api/public/institucion` -> `public.routes.js`
-- `login.html` -> llama a `/api/auth/login` -> `auth.routes.js` -> `auth.controller.js`
+- `login.html` -> verifica correo e inicia sesión en `auth.routes.js` -> `auth.controller.js`
 - `dashboard.html` -> llama a `/api/practicas/*` y `/api/reportes/*`
 - `resolveTenant` -> llena `req.tenant` antes de cada ruta de negocio
 - `requireAuth` -> valida JWT y compara `institucionId` con `req.tenant.id`
@@ -94,6 +99,7 @@ En bases inicializadas antes de permitir asignaciones sin institución receptora
 
 ### Autenticación
 
+- `POST /api/auth/verificar-correo`: confirma que el correo pertenece a una cuenta activa del tenant.
 - `POST /api/auth/login`: inicio de sesión con validación por tenant
 
 ### Prácticas
