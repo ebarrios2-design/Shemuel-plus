@@ -12,8 +12,11 @@
 <header class="dash-header">
   <div class="wrap">
     <div class="brand">
-      <span class="brand-name">Shemuel Plus</span>
-      <span class="brand-tenant" data-tenant-slug></span>
+      <img class="brand-logo" src="shemuel-plus-icon.png" alt="Logo de Shemuel Plus" />
+      <div class="brand-copy">
+        <span class="brand-name">Shemuel Plus</span>
+        <span class="brand-tenant" data-tenant-slug></span>
+      </div>
     </div>
     <div style="display:flex; align-items:center; gap:14px;">
       <span class="pill" id="rol-pill">rol</span>
@@ -141,6 +144,83 @@
             <button type="submit" class="btn btn-primary">Crear asignación</button>
           </div>
         </form>
+      </section>
+
+      <section id="panel-solicitud-practica" class="admin-panel" style="display:none; margin-top:28px;">
+        <div class="admin-header">
+          <h2>Solicitar práctica</h2>
+        </div>
+        <form id="form-solicitud-practica" class="admin-form">
+          <div class="form-grid">
+            <div class="field">
+              <label for="solicitud-semestre">Semestre</label>
+              <select id="solicitud-semestre" required>
+                <option value="4">4.º semestre</option>
+                <option value="5">5.º semestre</option>
+                <option value="6">6.º semestre</option>
+                <option value="7">7.º semestre</option>
+                <option value="8">8.º semestre</option>
+                <option value="9">9.º semestre</option>
+                <option value="10">10.º semestre</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="solicitud-practica">Práctica que desea realizar</label>
+              <select id="solicitud-practica" required></select>
+            </div>
+            <div class="field">
+              <label for="solicitud-fecha-inicio">Fecha de inicio</label>
+              <input id="solicitud-fecha-inicio" type="date" required />
+            </div>
+            <div class="field">
+              <label for="solicitud-fecha-fin">Fecha de fin</label>
+              <input id="solicitud-fecha-fin" type="date" />
+            </div>
+            <div class="field">
+              <label for="solicitud-horas">Horas requeridas</label>
+              <input id="solicitud-horas" type="number" min="1" value="120" required />
+            </div>
+            <div class="field">
+              <label for="solicitud-cedula">Fotocopia de cédula</label>
+              <input id="solicitud-cedula" type="file" accept=".pdf,.jpg,.jpeg,.png" required />
+            </div>
+            <div class="field">
+              <label for="solicitud-recibo">Recibo del semestre actual</label>
+              <input id="solicitud-recibo" type="file" accept=".pdf,.jpg,.jpeg,.png" required />
+            </div>
+            <div class="field">
+              <label for="solicitud-certificacion">Certificación de materias matriculadas y aprobadas</label>
+              <input id="solicitud-certificacion" type="file" accept=".pdf,.jpg,.jpeg,.png" required />
+            </div>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-primary">Enviar solicitud</button>
+          </div>
+        </form>
+        <p id="estado-solicitud-practica" role="status"></p>
+      </section>
+
+      <section id="panel-solicitudes-director" class="admin-panel" style="display:none; margin-top:28px;">
+        <div class="admin-header">
+          <h2>Solicitudes de práctica</h2>
+        </div>
+        <div class="table-wrap">
+          <table class="data">
+            <thead>
+              <tr>
+                <th>Estudiante</th>
+                <th>Práctica solicitada</th>
+                <th>Semestre</th>
+                <th>Inicio</th>
+                <th>Horas</th>
+                <th>Estado</th>
+                <th>Documentos</th>
+                <th>Docente / acción</th>
+              </tr>
+            </thead>
+            <tbody id="tbody-solicitudes-practica"></tbody>
+          </table>
+        </div>
       </section>
 
       <section id="panel-seguimiento" class="admin-panel" style="display:none; margin-top:28px;">
@@ -448,6 +528,194 @@
       : '<option value="">Sin docentes</option>';
 
     document.getElementById('admin-practicas').style.display = 'block';
+  }
+
+  async function cargarSolicitudEstudiante() {
+    if (usuario.rol !== 'estudiante') return;
+    document.getElementById('panel-solicitud-practica').style.display = 'block';
+    actualizarPracticasPorSemestre();
+
+    const slug = detectarTenantSlug();
+    const solicitudesRes = await fetch(`${API_BASE}/api/practicas/solicitudes`, {
+      headers: { Authorization: `Bearer ${token}`, 'X-Tenant': slug },
+    });
+    if (solicitudesRes.ok) {
+      const solicitudes = await solicitudesRes.json();
+      const pendiente = solicitudes.find((item) => item.estado === 'pendiente');
+      document.getElementById('estado-solicitud-practica').textContent = pendiente
+        ? 'Tienes una solicitud pendiente de aprobación.'
+        : '';
+    }
+  }
+
+  function actualizarPracticasPorSemestre() {
+    const semestre = Number(document.getElementById('solicitud-semestre').value);
+    const select = document.getElementById('solicitud-practica');
+    const practicasBasicas = [
+      'Práctica de observación o inmersión',
+      'Práctica formativa o de intervención',
+    ];
+    const practicasAvanzadas = [
+      'Práctica pedagógica investigativa',
+      'Práctica docente terminal',
+    ];
+    let opciones = [];
+
+    if (semestre >= 4) opciones.push(...practicasBasicas);
+    if (semestre >= 6) opciones.push(...practicasAvanzadas);
+
+    select.innerHTML = opciones.length
+      ? opciones.map((practica) => `<option value="${practica}">${practica}</option>`).join('')
+      : '<option value="">Las prácticas se habilitan desde cuarto semestre</option>';
+    select.disabled = opciones.length === 0;
+  }
+
+  document.getElementById('solicitud-semestre')?.addEventListener('change', actualizarPracticasPorSemestre);
+
+  function renderDocumentosSolicitud(solicitud) {
+    const nombres = {
+      cedula: 'Fotocopia de cédula',
+      reciboSemestre: 'Recibo del semestre actual',
+      certificacionMaterias: 'Certificación de materias',
+    };
+    return (solicitud.documentos || []).map((documento) => `
+      <button type="button" class="btn btn-ghost btn-small"
+              data-documento="${documento.tipo_documento}"
+              data-solicitud="${solicitud.id}">
+        ${nombres[documento.tipo_documento] || documento.tipo_documento}
+      </button>
+    `).join('<br>');
+  }
+
+  async function cargarSolicitudesDirector() {
+    if (usuario.rol !== 'director') return;
+    const slug = detectarTenantSlug();
+    const headers = { Authorization: `Bearer ${token}`, 'X-Tenant': slug };
+    const [solicitudesRes, docentesRes] = await Promise.all([
+      fetch(`${API_BASE}/api/practicas/solicitudes`, { headers }),
+      fetch(`${API_BASE}/api/practicas/docentes-disponibilidad`, { headers }),
+    ]);
+    const solicitudes = solicitudesRes.ok ? await solicitudesRes.json() : [];
+    const docentes = docentesRes.ok ? await docentesRes.json() : [];
+
+    document.getElementById('panel-solicitudes-director').style.display = 'block';
+    const tbody = document.getElementById('tbody-solicitudes-practica');
+    if (!solicitudes.length) {
+    tbody.innerHTML = '<tr><td colspan="8">No hay solicitudes registradas.</td></tr>';
+      return;
+    }
+
+    const opcionesDocentes = docentes.length
+      ? `<option value="">Asignación automática</option>` +
+        docentes.map((docente) =>
+          `<option value="${docente.id}" ${docente.disponible ? '' : 'disabled'}>${docente.nombre_completo} (${docente.estudiantes_activos}/20)</option>`
+        ).join('')
+      : '<option value="">Sin docentes disponibles</option>';
+
+    tbody.innerHTML = solicitudes.map((solicitud) => {
+      const pendiente = solicitud.estado === 'pendiente';
+      const acciones = pendiente
+        ? `<select class="solicitud-docente" data-id="${solicitud.id}">${opcionesDocentes}</select>
+           <label class="checkbox-row"><input type="checkbox" class="validacion-documentos" data-id="${solicitud.id}" /> Documentos validados</label>
+           <button type="button" class="btn btn-primary btn-small" data-aprobar="${solicitud.id}">Aprobar</button>
+           <button type="button" class="btn btn-ghost btn-small" data-rechazar="${solicitud.id}">Rechazar</button>`
+        : solicitud.docente || solicitud.motivo_rechazo || '—';
+      return `<tr>
+        <td>${solicitud.estudiante}</td>
+        <td>${solicitud.practica_solicitada || '—'}</td>
+        <td>${solicitud.semestre || '—'}</td>
+        <td>${solicitud.fecha_inicio}</td>
+        <td>${solicitud.horas_requeridas}</td>
+        <td>${solicitud.estado}</td>
+        <td>${renderDocumentosSolicitud(solicitud)}</td>
+        <td>${acciones}</td>
+      </tr>`;
+    }).join('');
+
+    tbody.querySelectorAll('[data-aprobar]').forEach((button) => {
+      button.addEventListener('click', () => aprobarSolicitud(button.dataset.aprobar));
+    });
+    tbody.querySelectorAll('[data-rechazar]').forEach((button) => {
+      button.addEventListener('click', () => rechazarSolicitud(button.dataset.rechazar));
+    });
+    tbody.querySelectorAll('[data-documento]').forEach((button) => {
+      button.addEventListener('click', () => descargarDocumentoSolicitud(
+        button.dataset.solicitud,
+        button.dataset.documento
+      ));
+    });
+  }
+
+  async function descargarDocumentoSolicitud(solicitudId, tipoDocumento) {
+    const slug = detectarTenantSlug();
+    const res = await fetch(
+      `${API_BASE}/api/practicas/solicitudes/${solicitudId}/documentos/${encodeURIComponent(tipoDocumento)}`,
+      { headers: { Authorization: `Bearer ${token}`, 'X-Tenant': slug } }
+    );
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(data.error || 'No se pudo descargar el documento.');
+      return;
+    }
+    const blob = await res.blob();
+    const disposition = res.headers.get('Content-Disposition') || '';
+    const nombreCoincidencia = disposition.match(/filename\\*=UTF-8''([^;]+)/i);
+    const nombre = nombreCoincidencia ? decodeURIComponent(nombreCoincidencia[1]) : `${tipoDocumento}.pdf`;
+    const url = URL.createObjectURL(blob);
+    const enlace = document.createElement('a');
+    enlace.href = url;
+    enlace.download = nombre;
+    enlace.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function aprobarSolicitud(id) {
+    const slug = detectarTenantSlug();
+    const select = document.querySelector(`.solicitud-docente[data-id="${id}"]`);
+    const checkbox = document.querySelector(`.validacion-documentos[data-id="${id}"]`);
+    if (!checkbox?.checked) {
+      alert('Primero valida que los documentos estén completos y sean correctos.');
+      return;
+    }
+    const res = await fetch(`${API_BASE}/api/practicas/solicitudes/${id}/aprobar`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        'X-Tenant': slug,
+      },
+      body: JSON.stringify({
+        docenteId: select?.value || null,
+        documentosVerificados: true,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(data.error || 'No se pudo aprobar la solicitud.');
+      return;
+    }
+    alert('Solicitud aprobada y práctica asignada.');
+    await Promise.all([cargarSolicitudesDirector(), cargarAsignaciones()]);
+  }
+
+  async function rechazarSolicitud(id) {
+    const motivo = window.prompt('Motivo del rechazo (opcional):') || '';
+    const slug = detectarTenantSlug();
+    const res = await fetch(`${API_BASE}/api/practicas/solicitudes/${id}/rechazar`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        'X-Tenant': slug,
+      },
+      body: JSON.stringify({ motivo }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(data.error || 'No se pudo rechazar la solicitud.');
+      return;
+    }
+    await cargarSolicitudesDirector();
   }
 
   async function cargarSeguimientoUsuario() {
@@ -1037,6 +1305,38 @@
     await cargarAsignaciones();
   });
 
+  document.getElementById('form-solicitud-practica').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const slug = detectarTenantSlug();
+    const datos = new FormData();
+    datos.set('practicaSolicitada', document.getElementById('solicitud-practica').value.trim());
+    datos.set('semestre', document.getElementById('solicitud-semestre').value);
+    datos.set('fechaInicio', document.getElementById('solicitud-fecha-inicio').value);
+    datos.set('fechaFin', document.getElementById('solicitud-fecha-fin').value || '');
+    datos.set('horasRequeridas', document.getElementById('solicitud-horas').value);
+    datos.set('cedula', document.getElementById('solicitud-cedula').files[0]);
+    datos.set('reciboSemestre', document.getElementById('solicitud-recibo').files[0]);
+    datos.set('certificacionMaterias', document.getElementById('solicitud-certificacion').files[0]);
+
+    const res = await fetch(`${API_BASE}/api/practicas/solicitudes`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'X-Tenant': slug,
+      },
+      body: datos,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(data.error || 'No se pudo enviar la solicitud.');
+      return;
+    }
+
+    document.getElementById('estado-solicitud-practica').textContent =
+      'Solicitud enviada. El director revisará tu solicitud.';
+    document.getElementById('form-solicitud-practica').reset();
+  });
+
   document.getElementById('btn-registrar-horas').addEventListener('click', async () => {
     const asignacionId = document.getElementById('asignacion-seguimiento').value;
     const horas = Number(document.getElementById('horas-cumplidas').value || 0);
@@ -1131,7 +1431,9 @@
         await cargarRoles();
         await cargarUsuarios();
         await cargarSelectoresPracticas();
+        await cargarSolicitudesDirector();
       }
+      await cargarSolicitudEstudiante();
       await cargarSeguimientoUsuario();
     })
     .catch(console.error);

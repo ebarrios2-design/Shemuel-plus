@@ -9,6 +9,8 @@ const tables = [
   'usuarios',
   'instituciones_receptoras',
   'asignaciones_practica',
+  'solicitudes_practica',
+  'documentos_solicitud_practica',
   'evaluaciones',
 ];
 

@@ -57,6 +57,19 @@ a { color: inherit; }
 
 .brand {
   display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-logo {
+  width: 46px;
+  height: 46px;
+  object-fit: contain;
+  flex: 0 0 46px;
+}
+
+.brand-copy {
+  display: flex;
   flex-direction: column;
   gap: 2px;
 }

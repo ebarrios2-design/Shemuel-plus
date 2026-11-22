@@ -93,6 +93,50 @@ CREATE INDEX idx_asignaciones_institucion ON asignaciones_practica(institucion_i
 CREATE INDEX idx_asignaciones_estudiante ON asignaciones_practica(estudiante_id);
 CREATE INDEX idx_asignaciones_docente ON asignaciones_practica(docente_id);
 
+CREATE TYPE estado_solicitud_practica AS ENUM (
+    'pendiente',
+    'aprobada',
+    'rechazada'
+);
+
+-- Solicitudes creadas por estudiantes antes de convertirse en asignaciones.
+CREATE TABLE solicitudes_practica (
+    id                        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    institucion_id            UUID NOT NULL REFERENCES instituciones(id) ON DELETE CASCADE,
+    estudiante_id             UUID NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+    institucion_receptora_id  UUID REFERENCES instituciones_receptoras(id),
+    asignacion_id             UUID REFERENCES asignaciones_practica(id),
+    practica_solicitada        VARCHAR(200) NOT NULL DEFAULT 'Práctica pedagógica',
+    semestre                   INTEGER NOT NULL DEFAULT 4 CHECK (semestre BETWEEN 1 AND 10),
+    fecha_inicio              DATE NOT NULL,
+    fecha_fin                 DATE,
+    horas_requeridas          INTEGER NOT NULL CHECK (horas_requeridas > 0),
+    estado                    estado_solicitud_practica NOT NULL DEFAULT 'pendiente',
+    documentos_verificados     BOOLEAN NOT NULL DEFAULT FALSE,
+    observacion_validacion     TEXT,
+    motivo_rechazo            TEXT,
+    creado_en                 TIMESTAMPTZ DEFAULT now(),
+    resuelto_en               TIMESTAMPTZ
+);
+
+CREATE INDEX idx_solicitudes_practica_tenant ON solicitudes_practica(institucion_id);
+CREATE INDEX idx_solicitudes_practica_estudiante ON solicitudes_practica(estudiante_id);
+CREATE INDEX idx_solicitudes_practica_estado ON solicitudes_practica(institucion_id, estado);
+
+CREATE TABLE documentos_solicitud_practica (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    solicitud_id    UUID NOT NULL REFERENCES solicitudes_practica(id) ON DELETE CASCADE,
+    tipo_documento  VARCHAR(50) NOT NULL,
+    nombre_archivo  VARCHAR(255) NOT NULL,
+    tipo_mime       VARCHAR(100) NOT NULL,
+    contenido       BYTEA NOT NULL,
+    verificado      BOOLEAN NOT NULL DEFAULT FALSE,
+    creado_en       TIMESTAMPTZ DEFAULT now(),
+    UNIQUE (solicitud_id, tipo_documento)
+);
+
+CREATE INDEX idx_documentos_solicitud ON documentos_solicitud_practica(solicitud_id);
+
 -- ------------------------------------------------------------
 -- Evaluaciones formales (calificacion cuantitativa) que hace el
 -- docente asesor sobre una asignacion. Los comentarios narrativos

@@ -123,6 +123,9 @@ test('crea una asignación sin institución receptora y usa el tenant actual', a
   const originalQuery = postgres.query;
   let capturedParams;
   postgres.query = async (_text, params) => {
+    if (String(_text).includes('FROM usuarios d')) {
+      return { rows: [{ id: 'd1', estudiantes_activos: 3 }] };
+    }
     capturedParams = params;
     return { rows: [{ id: 'a1', institucion_id: 'tenant-1', institucion_receptora_id: null }] };
   };
@@ -181,5 +184,89 @@ test('guarda el seguimiento vinculado al tenant, asignación y docente', async (
   } finally {
     postgres.query = originalQuery;
     Observacion.create = originalCreate;
+  }
+});
+
+test('un estudiante puede crear una solicitud de práctica', async () => {
+  const originalQuery = postgres.query;
+  const originalConnect = postgres.pool.connect;
+  let capturedParams;
+  postgres.query = async (text, params) => {
+    if (String(text).includes('SELECT id FROM solicitudes_practica')) {
+      return { rows: [] };
+    }
+    if (String(text).includes('INSERT INTO solicitudes_practica')) {
+      capturedParams = params;
+      return { rows: [{ id: 's1', estudiante_id: 'u1', estado: 'pendiente' }] };
+    }
+    return { rows: [] };
+  };
+  postgres.pool.connect = async () => ({
+    query: async (text, params) => {
+      if (String(text).includes('SELECT id FROM solicitudes_practica')) return { rows: [] };
+      if (String(text).includes('INSERT INTO solicitudes_practica')) {
+        capturedParams = params;
+        return { rows: [{ id: 's1', estudiante_id: 'u1', estado: 'pendiente' }] };
+      }
+      if (String(text).includes('INSERT INTO documentos_solicitud_practica')) return { rows: [] };
+      return { rows: [] };
+    },
+    release: () => {},
+  });
+
+  try {
+    const req = {
+      tenant: { id: 'tenant-1' },
+      user: { sub: 'u1', rol: 'estudiante' },
+      body: {
+        practicaSolicitada: 'Práctica docente terminal',
+        semestre: '6',
+        fechaInicio: '2026-12-01',
+        fechaFin: null,
+        horasRequeridas: 120,
+      },
+      files: {
+        cedula: [{ originalname: 'cedula.pdf', mimetype: 'application/pdf', buffer: Buffer.from('cedula') }],
+        reciboSemestre: [{ originalname: 'recibo.pdf', mimetype: 'application/pdf', buffer: Buffer.from('recibo') }],
+        certificacionMaterias: [{ originalname: 'materias.pdf', mimetype: 'application/pdf', buffer: Buffer.from('materias') }],
+      },
+    };
+    const res = { status: (code) => ({ json: (payload) => {
+      assert.equal(code, 201);
+      assert.equal(payload.estado, 'pendiente');
+    } }) };
+
+    await practicas.crearSolicitudPractica(req, res, () => {});
+    assert.deepEqual(capturedParams, ['tenant-1', 'u1', null, 'Práctica docente terminal', 6, '2026-12-01', null, 120]);
+  } finally {
+    postgres.query = originalQuery;
+    postgres.pool.connect = originalConnect;
+  }
+});
+
+test('informa cupo disponible y máximo de 20 estudiantes por docente', async () => {
+  const originalQuery = postgres.query;
+  postgres.query = async (text) => {
+    assert.match(String(text), /COUNT\(a\.id\)/);
+    return {
+      rows: [
+        { id: 'd1', nombre_completo: 'Docente Uno', estudiantes_activos: 18 },
+        { id: 'd2', nombre_completo: 'Docente Dos', estudiantes_activos: 20 },
+      ],
+    };
+  };
+
+  try {
+    const req = { tenant: { id: 'tenant-1' }, user: { rol: 'director' } };
+    const res = { json: (payload) => {
+      assert.equal(payload[0].disponible, true);
+      assert.equal(payload[0].capacidad_disponible, 2);
+      assert.equal(payload[1].disponible, false);
+      assert.equal(payload[1].capacidad_disponible, 0);
+    } };
+
+    await practicas.listarDisponibilidadDocentes(req, res, () => {});
+  } finally {
+    postgres.query = originalQuery;
   }
 });
