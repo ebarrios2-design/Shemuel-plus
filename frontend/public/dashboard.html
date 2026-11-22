@@ -148,19 +148,73 @@
           <h2>Seguimiento de práctica</h2>
         </div>
 
+        <section id="panel-talleres" class="workshop-area" aria-labelledby="titulo-talleres">
+          <div class="workshop-heading">
+            <div>
+              <h3 id="titulo-talleres">Talleres de práctica</h3>
+              <p>La actividad acredita 3 horas y el quiz completado acredita 1 hora.</p>
+            </div>
+            <span class="pill">3 h actividad · 1 h quiz</span>
+          </div>
+
+          <div id="tabs-estudiante" hidden>
+            <div class="workshop-tabs" role="tablist" aria-label="Actividades de práctica">
+              <button type="button" class="workshop-tab is-active" id="tab-actividad" role="tab" aria-selected="true" aria-controls="vista-actividad">Subir tarea</button>
+              <button type="button" class="workshop-tab" id="tab-quiz" role="tab" aria-selected="false" aria-controls="vista-quiz">Quiz</button>
+            </div>
+            <div id="vista-actividad" class="workshop-view" role="tabpanel" aria-labelledby="tab-actividad">
+              <div id="lista-talleres-actividad" class="workshop-list"></div>
+            </div>
+            <div id="vista-quiz" class="workshop-view" role="tabpanel" aria-labelledby="tab-quiz" hidden>
+              <div id="lista-talleres-quiz" class="workshop-list"></div>
+            </div>
+          </div>
+
+          <div id="panel-docente-talleres" hidden>
+            <form id="form-taller" class="admin-form workshop-form">
+              <h4>Crear taller y preguntas del quiz</h4>
+              <div class="form-grid">
+                <div class="field">
+                  <label for="taller-asignacion">Asignación</label>
+                  <select id="taller-asignacion" required></select>
+                </div>
+                <div class="field">
+                  <label for="taller-titulo">Título del taller</label>
+                  <input id="taller-titulo" type="text" maxlength="150" required />
+                </div>
+              </div>
+              <div class="field">
+                <label for="taller-instrucciones">Actividad e instrucciones</label>
+                <textarea id="taller-instrucciones" rows="3" maxlength="4000" required></textarea>
+              </div>
+              <div class="question-heading">
+                <h4>Preguntas de opción múltiple</h4>
+                <button type="button" class="btn btn-ghost" id="btn-agregar-pregunta">Agregar pregunta</button>
+              </div>
+              <div id="editor-preguntas" class="question-list"></div>
+              <div class="form-actions">
+                <button type="submit" class="btn btn-primary">Publicar taller</button>
+              </div>
+            </form>
+            <div id="lista-talleres-docente" class="workshop-list"></div>
+          </div>
+
+          <p id="mensaje-taller" class="workshop-message" role="status" aria-live="polite"></p>
+        </section>
+
         <div class="form-grid">
           <div class="field">
             <label for="asignacion-seguimiento">Asignación activa</label>
             <select id="asignacion-seguimiento"></select>
           </div>
 
-          <div class="field">
+          <div class="field" id="registro-horas-manual">
             <label for="horas-cumplidas">Horas cumplidas</label>
             <input id="horas-cumplidas" type="number" min="0" value="0" />
           </div>
         </div>
 
-        <div class="form-actions">
+        <div class="form-actions" id="acciones-horas-manuales">
           <button type="button" class="btn btn-primary" id="btn-registrar-horas">Registrar horas</button>
         </div>
 
@@ -224,8 +278,8 @@
   document.getElementById('rol-pill').textContent = usuario.rol.replace('_', ' ');
 
   const descripcionesPorRol = {
-    estudiante: 'Consulta tu asignación de práctica y el avance de tus horas.',
-    docente_asesor: 'Estas son las asignaciones que tienes bajo acompañamiento.',
+    estudiante: 'Entrega las actividades de tus talleres, completa quizzes y revisa tus horas de práctica.',
+    docente_asesor: 'Crea talleres, revisa entregas y activa quizzes para tus asignaciones.',
     institucion_receptora: 'Asignaciones vinculadas con tu institución receptora.',
     director: 'Vista consolidada de las prácticas activas en tu programa.',
   };
@@ -417,7 +471,443 @@
 
     const panel = document.getElementById('panel-seguimiento');
     panel.style.display = 'block';
+
+    document.getElementById('registro-horas-manual').hidden = true;
+    document.getElementById('acciones-horas-manuales').hidden = true;
+    document.getElementById('form-plan-clase').hidden = usuario.rol !== 'estudiante';
+    document.getElementById('form-observacion').hidden = usuario.rol !== 'docente_asesor';
+    if (usuario.rol === 'estudiante') {
+      document.getElementById('tabs-estudiante').hidden = false;
+    } else {
+      document.getElementById('panel-docente-talleres').hidden = false;
+      document.getElementById('taller-asignacion').innerHTML = sel.innerHTML;
+    }
+
+    await cargarTalleres();
   }
+
+  let colaGuardadoRespuestas = Promise.resolve();
+  let finalizacionAutomaticaEnCurso = false;
+
+  async function solicitarTaller(ruta, opciones = {}) {
+    const headers = new Headers(opciones.headers || {});
+    headers.set('Authorization', `Bearer ${token}`);
+    headers.set('X-Tenant', detectarTenantSlug());
+    const res = await fetch(`${API_BASE}/api/practicas${ruta}`, { ...opciones, headers });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'No se pudo completar la operación.');
+    return data;
+  }
+
+  function mostrarMensajeTaller(texto, error = false) {
+    const mensaje = document.getElementById('mensaje-taller');
+    mensaje.textContent = texto;
+    mensaje.dataset.error = String(error);
+  }
+
+  function crearElemento(tag, className, texto) {
+    const elemento = document.createElement(tag);
+    if (className) elemento.className = className;
+    if (texto !== undefined) elemento.textContent = texto;
+    return elemento;
+  }
+
+  function actualizarContadores() {
+    document.querySelectorAll('[data-countdown]').forEach((elemento) => {
+      const restante = new Date(elemento.dataset.countdown).getTime() - Date.now();
+      if (restante <= 0) {
+        elemento.textContent = elemento.dataset.expiredText || 'Tiempo finalizado';
+        if (elemento.dataset.autoFinish && !finalizacionAutomaticaEnCurso) {
+          finalizacionAutomaticaEnCurso = true;
+          colaGuardadoRespuestas
+            .then(() => solicitarTaller(`/talleres/${elemento.dataset.autoFinish}/quiz/finalizar`, { method: 'POST' }))
+            .then((resultado) => {
+              mostrarMensajeTaller(`Quiz finalizado automáticamente. Puntaje: ${resultado.puntaje}%.`);
+              return cargarTalleres();
+            })
+            .catch((err) => mostrarMensajeTaller(err.message, true))
+            .finally(() => { finalizacionAutomaticaEnCurso = false; });
+        }
+        return;
+      }
+
+      const segundos = Math.floor(restante / 1000);
+      const horas = String(Math.floor(segundos / 3600)).padStart(2, '0');
+      const minutos = String(Math.floor((segundos % 3600) / 60)).padStart(2, '0');
+      const segundosRestantes = String(segundos % 60).padStart(2, '0');
+      elemento.textContent = `${horas}:${minutos}:${segundosRestantes}`;
+    });
+  }
+
+  function agregarEditorPregunta() {
+    const contenedor = document.getElementById('editor-preguntas');
+    if (contenedor.children.length >= 20) {
+      mostrarMensajeTaller('El quiz admite un máximo de 20 preguntas.', true);
+      return;
+    }
+
+    const numero = contenedor.children.length + 1;
+    const editor = crearElemento('fieldset', 'question-editor');
+    editor.innerHTML = `
+      <legend>Pregunta ${numero}</legend>
+      <div class="field">
+        <label>Enunciado</label>
+        <input class="question-prompt" type="text" maxlength="500" required>
+      </div>
+      <div class="question-options">
+        <div class="field"><label>Opción 1</label><input class="question-option" type="text" maxlength="250" required></div>
+        <div class="field"><label>Opción 2</label><input class="question-option" type="text" maxlength="250" required></div>
+        <div class="field"><label>Opción 3</label><input class="question-option" type="text" maxlength="250" required></div>
+        <div class="field"><label>Opción 4</label><input class="question-option" type="text" maxlength="250" required></div>
+      </div>
+      <div class="field">
+        <label>Respuesta correcta</label>
+        <select class="question-correct">
+          <option value="0">Opción 1</option><option value="1">Opción 2</option>
+          <option value="2">Opción 3</option><option value="3">Opción 4</option>
+        </select>
+      </div>`;
+    contenedor.append(editor);
+  }
+
+  function crearEnlaceDescarga(tallerId, texto, estudianteId) {
+    const enlace = crearElemento('a', 'btn btn-ghost', texto);
+    const queryEstudiante = estudianteId ? `?estudianteId=${encodeURIComponent(estudianteId)}` : '';
+    enlace.href = `${API_BASE}/api/practicas/talleres/${tallerId}/entrega/archivo${queryEstudiante}`;
+    enlace.addEventListener('click', (event) => {
+      event.preventDefault();
+      solicitarDescarga(tallerId, estudianteId).catch((err) => mostrarMensajeTaller(err.message, true));
+    });
+    return enlace;
+  }
+
+  async function solicitarDescarga(tallerId, estudianteId) {
+    const queryEstudiante = estudianteId ? `?estudianteId=${encodeURIComponent(estudianteId)}` : '';
+    const res = await fetch(`${API_BASE}/api/practicas/talleres/${tallerId}/entrega/archivo${queryEstudiante}`, {
+      headers: { Authorization: `Bearer ${token}`, 'X-Tenant': detectarTenantSlug() },
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || 'No se pudo descargar el archivo.');
+    }
+    const blob = await res.blob();
+    const disposition = res.headers.get('Content-Disposition') || '';
+    const encodedName = disposition.match(/filename\*=UTF-8''([^;]+)/i);
+    const nombre = encodedName ? decodeURIComponent(encodedName[1]) : 'actividad';
+    const enlace = document.createElement('a');
+    enlace.href = URL.createObjectURL(blob);
+    enlace.download = nombre;
+    enlace.click();
+    window.setTimeout(() => URL.revokeObjectURL(enlace.href), 1000);
+  }
+
+  function crearTarjetaActividad(taller) {
+    const tarjeta = crearElemento('article', 'workshop-card');
+    tarjeta.append(crearElemento('h4', '', taller.titulo));
+    tarjeta.append(crearElemento('p', '', taller.instrucciones));
+    const entrega = taller.entrega;
+    const estado = crearElemento('p', 'workshop-status');
+
+    if (entrega?.actividadEntregadaEn) {
+      estado.textContent = entrega.entregaTardia
+        ? 'Actividad entregada tarde · 3 horas acreditadas'
+        : 'Actividad entregada · 3 horas acreditadas';
+      tarjeta.append(estado);
+      tarjeta.append(crearElemento('p', 'workshop-meta', `Entregada: ${new Date(entrega.actividadEntregadaEn).toLocaleString()}`));
+      tarjeta.append(crearEnlaceDescarga(taller._id, 'Descargar mi archivo'));
+      if (entrega.comentario) tarjeta.append(crearElemento('p', '', `Comentario: ${entrega.comentario}`));
+      return tarjeta;
+    }
+
+    if (!entrega?.actividadIniciadaEn) {
+      tarjeta.append(crearElemento('p', '', 'Inicia la actividad para abrir el plazo de entrega de 3 horas.'));
+      const iniciar = crearElemento('button', 'btn btn-primary', 'Iniciar actividad');
+      iniciar.type = 'button';
+      iniciar.addEventListener('click', async () => {
+        try {
+          await solicitarTaller(`/talleres/${taller._id}/actividad/iniciar`, { method: 'POST' });
+          mostrarMensajeTaller('Actividad iniciada. Tienes 3 horas para entregar; puedes enviarla después del plazo, pero quedará marcada como tardía.');
+          await cargarTalleres();
+        } catch (err) {
+          mostrarMensajeTaller(err.message, true);
+        }
+      });
+      tarjeta.append(iniciar);
+      return tarjeta;
+    }
+
+    const fechaLimite = new Date(new Date(entrega.actividadIniciadaEn).getTime() + 3 * 60 * 60 * 1000);
+    tarjeta.append(crearElemento('p', 'workshop-meta', 'Tiempo restante para entregar:'));
+    const contador = crearElemento('p', 'timer-display');
+    contador.dataset.countdown = fechaLimite.toISOString();
+    contador.dataset.expiredText = 'Plazo vencido; todavía puedes entregar la actividad.';
+    tarjeta.append(contador);
+
+    const formulario = crearElemento('form', 'workshop-form-actions');
+    const archivo = document.createElement('input');
+    archivo.type = 'file';
+    archivo.name = 'archivo';
+    archivo.accept = '.pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.jpg,.jpeg,.png,.txt';
+    archivo.required = true;
+    archivo.setAttribute('aria-label', 'Archivo de la actividad');
+    const comentario = document.createElement('textarea');
+    comentario.name = 'comentario';
+    comentario.maxLength = 2000;
+    comentario.placeholder = 'Comentario sobre el archivo (opcional)';
+    comentario.setAttribute('aria-label', 'Comentario sobre el archivo');
+    const enviar = crearElemento('button', 'btn btn-primary', 'Subir actividad');
+    enviar.type = 'submit';
+    formulario.append(archivo, comentario, enviar);
+    formulario.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!archivo.files.length) return;
+      const datos = new FormData();
+      datos.append('archivo', archivo.files[0]);
+      datos.append('comentario', comentario.value);
+      enviar.disabled = true;
+      try {
+        const resultado = await solicitarTaller(`/talleres/${taller._id}/actividad/entregar`, {
+          method: 'POST',
+          body: datos,
+        });
+        mostrarMensajeTaller(resultado.entregaTardia
+          ? 'Actividad entregada fuera del plazo. Se acreditaron 3 horas de práctica.'
+          : 'Actividad entregada. Se acreditaron 3 horas de práctica.');
+        await cargarTalleres();
+      } catch (err) {
+        enviar.disabled = false;
+        mostrarMensajeTaller(err.message, true);
+      }
+    });
+    tarjeta.append(formulario);
+    return tarjeta;
+  }
+
+  function crearTarjetaQuiz(taller) {
+    const tarjeta = crearElemento('article', 'workshop-card quiz-card');
+    tarjeta.append(crearElemento('h4', '', taller.titulo));
+    const entrega = taller.entrega;
+
+    if (!entrega?.actividadEntregadaEn) {
+      tarjeta.append(crearElemento('p', '', 'Entrega la actividad para habilitar el quiz.'));
+      return tarjeta;
+    }
+    if (entrega.quizFinalizadoEn) {
+      tarjeta.append(crearElemento('p', 'workshop-status', `Quiz completado · Puntaje: ${entrega.puntaje}% · 1 hora acreditada`));
+      return tarjeta;
+    }
+    if (!taller.quizActivado) {
+      tarjeta.append(crearElemento('p', '', 'El docente asesor activará el quiz cuando esté listo.'));
+      return tarjeta;
+    }
+    if (!entrega.quizIniciadoEn) {
+      tarjeta.append(crearElemento('p', '', 'El docente activó el quiz. Al iniciarlo tendrás 1 hora para responder.'));
+      const iniciar = crearElemento('button', 'btn btn-primary', 'Iniciar quiz');
+      iniciar.type = 'button';
+      iniciar.addEventListener('click', async () => {
+        try {
+          await solicitarTaller(`/talleres/${taller._id}/quiz/iniciar`, { method: 'POST' });
+          mostrarMensajeTaller('Quiz iniciado. Tus respuestas se guardan mientras avanzas.');
+          await cargarTalleres();
+        } catch (err) {
+          mostrarMensajeTaller(err.message, true);
+        }
+      });
+      tarjeta.append(iniciar);
+      return tarjeta;
+    }
+
+    const vencimiento = new Date(new Date(entrega.quizIniciadoEn).getTime() + 60 * 60 * 1000);
+    tarjeta.append(crearElemento('p', 'workshop-meta', 'Tiempo restante:'));
+    const contador = crearElemento('p', 'timer-display');
+    contador.dataset.countdown = vencimiento.toISOString();
+    contador.dataset.expiredText = 'Tiempo finalizado';
+    contador.dataset.autoFinish = taller._id;
+    tarjeta.append(contador);
+
+    const formulario = crearElemento('form', 'quiz-form');
+    taller.preguntas.forEach((item, indice) => {
+      const grupo = crearElemento('fieldset', 'quiz-question');
+      grupo.append(crearElemento('h5', '', `${indice + 1}. ${item.pregunta}`));
+      item.opciones.forEach((opcion, indiceOpcion) => {
+        const etiqueta = crearElemento('label', 'quiz-option');
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = `pregunta-${indice}`;
+        radio.value = String(indiceOpcion);
+        radio.checked = entrega.respuestas?.some((respuesta) => (
+          respuesta.pregunta === indice && respuesta.opcion === indiceOpcion
+        )) || false;
+        const texto = crearElemento('span', '', opcion);
+        etiqueta.append(radio, texto);
+        grupo.append(etiqueta);
+      });
+      formulario.append(grupo);
+    });
+    const finalizar = crearElemento('button', 'btn btn-primary', 'Finalizar quiz');
+    finalizar.type = 'submit';
+    formulario.append(finalizar);
+
+    function obtenerRespuestas() {
+      return taller.preguntas.map((_, indice) => {
+        const seleccion = formulario.querySelector(`input[name="pregunta-${indice}"]:checked`);
+        return seleccion ? Number(seleccion.value) : null;
+      });
+    }
+
+    formulario.addEventListener('change', () => {
+      const respuestas = obtenerRespuestas();
+      colaGuardadoRespuestas = colaGuardadoRespuestas
+        .then(() => solicitarTaller(`/talleres/${taller._id}/quiz/respuestas`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ respuestas }),
+        }))
+        .catch((err) => mostrarMensajeTaller(err.message, true));
+    });
+
+    formulario.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const respuestas = obtenerRespuestas();
+      if (respuestas.some((respuesta) => respuesta === null)) {
+        mostrarMensajeTaller('Responde todas las preguntas antes de finalizar.', true);
+        return;
+      }
+      finalizar.disabled = true;
+      try {
+        await colaGuardadoRespuestas;
+        const resultado = await solicitarTaller(`/talleres/${taller._id}/quiz/finalizar`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ respuestas }),
+        });
+        mostrarMensajeTaller(`Quiz completado. Puntaje: ${resultado.puntaje}%. Se acreditó 1 hora de práctica.`);
+        await cargarTalleres();
+      } catch (err) {
+        finalizar.disabled = false;
+        mostrarMensajeTaller(err.message, true);
+      }
+    });
+
+    tarjeta.append(formulario);
+    return tarjeta;
+  }
+
+  function crearTarjetaDocente(taller) {
+    const tarjeta = crearElemento('article', 'workshop-card');
+    tarjeta.append(crearElemento('h4', '', taller.titulo));
+    tarjeta.append(crearElemento('p', '', taller.instrucciones));
+    const totalEntregas = (taller.entregas || []).filter((entrega) => entrega.actividadEntregadaEn).length;
+    tarjeta.append(crearElemento('p', 'workshop-meta', `${taller.preguntas.length} preguntas · ${totalEntregas} entregas`));
+
+    if (taller.quizActivado) {
+      tarjeta.append(crearElemento('p', 'workshop-status', 'Quiz activado para estudiantes'));
+    } else {
+      const activar = crearElemento('button', 'btn btn-primary', 'Activar quiz');
+      activar.type = 'button';
+      activar.addEventListener('click', async () => {
+        try {
+          await solicitarTaller(`/talleres/${taller._id}/quiz/activar`, { method: 'POST' });
+          mostrarMensajeTaller('Quiz activado. El estudiante puede iniciarlo después de entregar la actividad.');
+          await cargarTalleres();
+        } catch (err) {
+          mostrarMensajeTaller(err.message, true);
+        }
+      });
+      tarjeta.append(activar);
+    }
+
+    for (const entrega of taller.entregas || []) {
+      if (!entrega.actividadEntregadaEn) continue;
+      const detalle = crearElemento('div', 'workshop-submission');
+      detalle.append(crearElemento('p', 'workshop-status', `${entrega.estudiante}${entrega.entregaTardia ? ' · Entrega tardía' : ''}`));
+      if (entrega.comentario) detalle.append(crearElemento('p', '', `Comentario: ${entrega.comentario}`));
+      if (entrega.quizFinalizadoEn) {
+        detalle.append(crearElemento('p', 'workshop-meta', `Quiz completado · Puntaje: ${entrega.puntaje}%`));
+      }
+      const descarga = crearEnlaceDescarga(
+        taller._id,
+        `Descargar ${entrega.archivo?.nombre || 'actividad'}`,
+        entrega.estudianteId
+      );
+      detalle.append(descarga);
+      tarjeta.append(detalle);
+    }
+    return tarjeta;
+  }
+
+  async function cargarTalleres() {
+    if (!['estudiante', 'docente_asesor'].includes(usuario.rol)) return;
+    try {
+      const talleres = await solicitarTaller('/talleres');
+      const esEstudiante = usuario.rol === 'estudiante';
+      const listaActividad = document.getElementById(esEstudiante ? 'lista-talleres-actividad' : 'lista-talleres-docente');
+      listaActividad.replaceChildren();
+
+      if (talleres.length === 0) {
+        listaActividad.append(crearElemento('p', 'empty-state workshop-empty', esEstudiante
+          ? 'Todavía no tienes talleres asignados.'
+          : 'Aún no has creado talleres para tus asignaciones.'));
+      } else if (esEstudiante) {
+        talleres.forEach((taller) => listaActividad.append(crearTarjetaActividad(taller)));
+        const quizLista = document.getElementById('lista-talleres-quiz');
+        quizLista.replaceChildren();
+        talleres.forEach((taller) => quizLista.append(crearTarjetaQuiz(taller)));
+      } else {
+        talleres.forEach((taller) => listaActividad.append(crearTarjetaDocente(taller)));
+      }
+      actualizarContadores();
+    } catch (err) {
+      mostrarMensajeTaller(err.message, true);
+    }
+  }
+
+  document.getElementById('tab-actividad').addEventListener('click', () => cambiarPestanaTaller('actividad'));
+  document.getElementById('tab-quiz').addEventListener('click', () => cambiarPestanaTaller('quiz'));
+
+  function cambiarPestanaTaller(pestana) {
+    const actividadActiva = pestana === 'actividad';
+    document.getElementById('tab-actividad').classList.toggle('is-active', actividadActiva);
+    document.getElementById('tab-actividad').setAttribute('aria-selected', String(actividadActiva));
+    document.getElementById('tab-quiz').classList.toggle('is-active', !actividadActiva);
+    document.getElementById('tab-quiz').setAttribute('aria-selected', String(!actividadActiva));
+    document.getElementById('vista-actividad').hidden = !actividadActiva;
+    document.getElementById('vista-quiz').hidden = actividadActiva;
+  }
+
+  document.getElementById('btn-agregar-pregunta').addEventListener('click', agregarEditorPregunta);
+  document.getElementById('form-taller').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const editores = [...document.querySelectorAll('.question-editor')];
+    const preguntas = editores.map((editor) => ({
+      pregunta: editor.querySelector('.question-prompt').value.trim(),
+      opciones: [...editor.querySelectorAll('.question-option')].map((opcion) => opcion.value.trim()),
+      respuestaCorrecta: Number(editor.querySelector('.question-correct').value),
+    }));
+
+    try {
+      await solicitarTaller('/talleres', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          asignacionId: document.getElementById('taller-asignacion').value,
+          titulo: document.getElementById('taller-titulo').value.trim(),
+          instrucciones: document.getElementById('taller-instrucciones').value.trim(),
+          preguntas,
+        }),
+      });
+      document.getElementById('form-taller').reset();
+      document.getElementById('editor-preguntas').replaceChildren();
+      agregarEditorPregunta();
+      mostrarMensajeTaller('Taller publicado. Activa el quiz cuando quieras habilitarlo.');
+      await cargarTalleres();
+    } catch (err) {
+      mostrarMensajeTaller(err.message, true);
+    }
+  });
+
+  agregarEditorPregunta();
+  window.setInterval(actualizarContadores, 1000);
 
   function resetFormulario() {
     document.getElementById('usuario-id').value = '';

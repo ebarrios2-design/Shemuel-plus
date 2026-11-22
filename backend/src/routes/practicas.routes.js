@@ -12,6 +12,7 @@ const express = require('express');
 const router = express.Router();
 const { requireAuth, requireRole } = require('../middleware/auth');
 const requireMongo = require('../middleware/requireMongo');
+const recibirActividad = require('../middleware/actividadUpload');
 const ctrl = require('../controllers/practicas.controller');
 
 router.use(requireAuth);
@@ -26,7 +27,7 @@ router.get('/usuarios/:rol', requireRole('director', 'docente_asesor'), ctrl.lis
 // Asignaciones (Postgres)
 router.get('/asignaciones', ctrl.listarAsignaciones);
 router.post('/asignaciones', requireRole('director', 'docente_asesor'), ctrl.crearAsignacion);
-router.post('/asignaciones/:id/horas', requireRole('estudiante', 'director'), ctrl.actualizarHorasAsignacion);
+router.post('/asignaciones/:id/horas', requireRole('director'), ctrl.actualizarHorasAsignacion);
 router.post('/asignaciones/:id/evaluaciones', requireRole('docente_asesor', 'director'), ctrl.crearEvaluacion);
 router.get('/asignaciones/evaluaciones', requireRole('director', 'docente_asesor'), ctrl.listarEvaluaciones);
 
@@ -37,5 +38,16 @@ router.post('/planes-clase', requireRole('estudiante'), requireMongo, ctrl.crear
 // Observaciones pedagogicas (Mongo)
 router.get('/observaciones', requireMongo, ctrl.listarObservaciones);
 router.post('/observaciones', requireRole('docente_asesor'), requireMongo, ctrl.crearObservacion);
+
+// Talleres, entrega de actividades y quizzes (Mongo + horas en PostgreSQL)
+router.get('/talleres', requireRole('estudiante', 'docente_asesor'), requireMongo, ctrl.listarTalleres);
+router.post('/talleres', requireRole('docente_asesor'), requireMongo, ctrl.crearTaller);
+router.post('/talleres/:id/quiz/activar', requireRole('docente_asesor'), requireMongo, ctrl.activarQuiz);
+router.post('/talleres/:id/actividad/iniciar', requireRole('estudiante'), requireMongo, ctrl.iniciarActividad);
+router.post('/talleres/:id/actividad/entregar', requireRole('estudiante'), requireMongo, recibirActividad, ctrl.entregarActividad);
+router.get('/talleres/:id/entrega/archivo', requireRole('estudiante', 'docente_asesor'), requireMongo, ctrl.descargarActividad);
+router.post('/talleres/:id/quiz/iniciar', requireRole('estudiante'), requireMongo, ctrl.iniciarQuiz);
+router.post('/talleres/:id/quiz/respuestas', requireRole('estudiante'), requireMongo, ctrl.guardarRespuestasQuiz);
+router.post('/talleres/:id/quiz/finalizar', requireRole('estudiante'), requireMongo, ctrl.finalizarQuiz);
 
 module.exports = router;

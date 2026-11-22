@@ -69,17 +69,43 @@ Usado para contenido con estructura flexible o narrativa, como:
 - planes de clase
 - observaciones pedagógicas
 - hoja de vida
+- talleres, preguntas de quiz y entregas de actividades
 
 Esto permite guardar documentos con campos variados sin forzar un esquema rígido de SQL.
 
 El backend puede iniciar y mantener disponibles las funciones respaldadas por PostgreSQL
-si MongoDB no está conectado. En ese caso, las rutas de planes de clase y observaciones
-responden con HTTP 503 hasta que MongoDB esté disponible; PostgreSQL sigue siendo
-requerido para iniciar la API.
+si MongoDB no está conectado. Las rutas de datos documentales responden con HTTP 503
+hasta que MongoDB esté disponible; PostgreSQL sigue siendo requerido para iniciar la API.
+
+### Talleres y horas de práctica
+
+El docente asesor crea talleres para sus asignaciones, agrega preguntas de opción múltiple
+y activa el quiz cuando esté listo. El estudiante inicia la actividad, tiene tres horas
+para subir un archivo (se aceptan PDF, archivos de Office, imágenes y texto, hasta 8 MB)
+y puede agregar un comentario. La entrega tardía se permite y queda marcada. Tras la
+entrega, el estudiante puede iniciar el quiz cuando el docente lo haya activado; el intento
+dura una hora y las respuestas se guardan mientras avanza. Se acreditan 3 horas al entregar
+la actividad y 1 hora al terminar el quiz, una sola vez cada una y sin superar las horas
+requeridas por la asignación.
 
 ### Actualización de bases existentes
 
 En bases inicializadas antes de permitir asignaciones sin institución receptora, aplica una vez `backend/database/migrations/001_optional_practice_receiver.sql`.
+
+### Migrar PostgreSQL local a Supabase
+
+1. Crea un proyecto Supabase y copia la URI de PostgreSQL de **Connect → Session pooler**. No la publiques ni la guardes en el repositorio.
+2. Descarga el certificado raíz desde **Project Settings → Database → SSL Configuration** y guárdalo como `backend/supabase-root.crt`.
+3. En `backend/.env`, configura `SUPABASE_DATABASE_URL` con la URI, `PG_SSL=true` y `PG_SSL_ROOT_CERT=supabase-root.crt`. La conexión valida el certificado; no desactives esa validación.
+4. Desde `backend`, ejecuta `npm run db:migrate:supabase`. El script crea el esquema si la base destino está vacía y copia las tablas en orden de dependencias. La migración no reemplaza filas existentes en Supabase; si encuentra conflictos, conserva las filas remotas. Toda la copia se realiza en una transacción.
+5. Cuando la migración finalice, configura `PG_CONNECTION_STRING` con la URI de Supabase. El backend usará Supabase en adelante; si `PG_CONNECTION_STRING` queda vacío, seguirá usando las variables locales `PG_*`.
+
+En PowerShell, la migración se puede ejecutar así desde `backend` (reemplaza el valor localmente, sin compartirlo):
+
+```powershell
+$env:SUPABASE_DATABASE_URL = "postgresql://..."
+npm run db:migrate:supabase
+```
 
 ## Conexión entre módulos
 
@@ -110,6 +136,14 @@ En bases inicializadas antes de permitir asignaciones sin institución receptora
 - `POST /api/practicas/planes-clase`
 - `GET /api/practicas/observaciones`
 - `POST /api/practicas/observaciones`
+- `GET /api/practicas/talleres`
+- `POST /api/practicas/talleres`: crea un taller y sus preguntas (docente asesor)
+- `POST /api/practicas/talleres/:id/actividad/iniciar`: inicia el plazo de entrega (estudiante)
+- `POST /api/practicas/talleres/:id/actividad/entregar`: entrega el archivo y comentario (estudiante)
+- `POST /api/practicas/talleres/:id/quiz/activar`: habilita el quiz (docente asesor)
+- `POST /api/practicas/talleres/:id/quiz/iniciar`: inicia el plazo de una hora (estudiante)
+- `POST /api/practicas/talleres/:id/quiz/respuestas`: guarda respuestas parciales (estudiante)
+- `POST /api/practicas/talleres/:id/quiz/finalizar`: califica el intento y acredita la hora (estudiante)
 
 ### Reportes
 
