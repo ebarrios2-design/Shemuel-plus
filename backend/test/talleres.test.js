@@ -1,9 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const practicas = require('../src/controllers/practicas.controller');
+const practicas = require('../src/controllers/practicas-ssre.controller');
 const saciClient = require('../src/services/saciClient');
 const Taller = require('../src/models/mongo/Taller');
 const EntregaTaller = require('../src/models/mongo/EntregaTaller');
+const Observacion = require('../src/models/mongo/Observacion');
 
 function respuestaFalsa() {
   return {
@@ -59,6 +60,54 @@ test('crea talleres solo para una asignación del docente del tenant', async () 
   } finally {
     saciClient.validarAsignacion = validarAsignacionOriginal;
     Taller.create = crearOriginal;
+  }
+});
+
+test('crear observación conserva el 404 cuando el docente no es dueño de la asignación', async () => {
+  const validarAsignacionOriginal = saciClient.validarAsignacion;
+  const crearOriginal = Observacion.create;
+  saciClient.validarAsignacion = async (...params) => {
+    assert.deepEqual(params, ['tenant-1', 'docente-1', 'docente_asesor', 'asignacion-1', null]);
+    return false;
+  };
+  Observacion.create = async () => assert.fail('No debe guardarse una observación sin autorización.');
+
+  try {
+    const response = respuestaFalsa();
+    await practicas.crearObservacion({
+      tenant: { id: 'tenant-1' },
+      user: { sub: 'docente-1' },
+      body: { asignacionId: 'asignacion-1', observacion: 'Visita realizada' },
+    }, response, (err) => { throw err; });
+
+    assert.equal(response.statusCode, 404);
+    assert.equal(response.payload.error, 'Asignación no encontrada para este docente e institución.');
+  } finally {
+    saciClient.validarAsignacion = validarAsignacionOriginal;
+    Observacion.create = crearOriginal;
+  }
+});
+
+test('crear observación propaga 503 cuando SACI no responde', async () => {
+  const validarAsignacionOriginal = saciClient.validarAsignacion;
+  const crearOriginal = Observacion.create;
+  saciClient.validarAsignacion = async () => {
+    throw Object.assign(new Error('No se pudo conectar con SACI.'), { status: 503 });
+  };
+  Observacion.create = async () => assert.fail('No debe guardarse una observación sin validar SACI.');
+  let errorPropagado;
+
+  try {
+    await practicas.crearObservacion({
+      tenant: { id: 'tenant-1' },
+      user: { sub: 'docente-1' },
+      body: { asignacionId: 'asignacion-1', observacion: 'Visita realizada' },
+    }, respuestaFalsa(), (err) => { errorPropagado = err; });
+
+    assert.equal(errorPropagado.status, 503);
+  } finally {
+    saciClient.validarAsignacion = validarAsignacionOriginal;
+    Observacion.create = crearOriginal;
   }
 });
 

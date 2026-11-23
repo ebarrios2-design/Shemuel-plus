@@ -86,3 +86,45 @@ test('SACI rechaza reutilizar una clave idempotente para otra asignación', asyn
   assert.equal(statements.at(-1), 'ROLLBACK');
   assert.equal(statements.some((statement) => statement === 'UPDATE asignaciones_practica SET'), false);
 });
+
+test('SACI valida que un docente sea dueño de una asignación sin exigir estudianteId', async () => {
+  const originalQuery = postgres.query;
+  let sqlEjecutado;
+  let parametros;
+  postgres.query = async (sql, params) => {
+    sqlEjecutado = sql;
+    parametros = params;
+    return { rows: [{ id: 'asignacion-1' }] };
+  };
+
+  const response = {
+    statusCode: 200,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(body) {
+      this.body = body;
+      return this;
+    },
+  };
+
+  try {
+    await controller.validarAsignacion({
+      body: {
+        tenantId: 'tenant-1',
+        userId: 'docente-1',
+        rol: 'docente_asesor',
+        asignacionId: 'asignacion-1',
+        estudianteId: null,
+      },
+    }, response, (err) => { throw err; });
+  } finally {
+    postgres.query = originalQuery;
+  }
+
+  assert.equal(response.body.autorizado, true);
+  assert.match(sqlEjecutado, /docente_id = \$3/);
+  assert.doesNotMatch(sqlEjecutado, /estudiante_id/);
+  assert.deepEqual(parametros, ['tenant-1', 'asignacion-1', 'docente-1']);
+});

@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { requireAuth, requireRole } = require('../middleware/auth');
 const recibirSolicitud = require('../middleware/solicitudUpload');
-const ctrl = require('../controllers/practicas.controller');
+const ctrl = require('../controllers/practicas-saci.controller');
 
 router.use(requireAuth);
 

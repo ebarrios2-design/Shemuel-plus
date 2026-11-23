@@ -3,7 +3,7 @@ const router = express.Router();
 const { requireRole } = require('../middleware/auth');
 const requireMongo = require('../middleware/requireMongo');
 const recibirActividad = require('../middleware/actividadUpload');
-const ctrl = require('../controllers/practicas.controller');
+const ctrl = require('../controllers/practicas-ssre.controller');
 
 router.get('/planes-clase', requireMongo, ctrl.listarPlanesClase);
 router.post('/planes-clase', requireRole('estudiante'), requireMongo, ctrl.crearPlanClase);

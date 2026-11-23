@@ -1,224 +1,76 @@
-# Shemuel Plus — documentación de arquitectura y conexiones
+# Arquitectura de Shemuel Plus
 
-## 1. Qué es esta aplicación
+Shemuel Plus es una plataforma multi-tenant para gestionar prácticas pedagógicas. El backend se ejecuta como tres procesos Express independientes: un gateway público y dos servicios dueños de sus propias bases de datos.
 
-Shemuel Plus es un prototipo de SaaS multi-tenant para gestión de prácticas pedagógicas. Cada universidad o institución funciona como un tenant diferente, con su propio identificador de subdominio, usuarios, asignaciones y reportes, sin mezclar información entre clientes.
+## Procesos y responsabilidades
 
-La aplicación está dividida en dos capas principales:
+| Proceso | Puerto | Responsabilidad | Persistencia |
+| --- | ---: | --- | --- |
+| Gateway | 4000 | Recibir solicitudes del frontend y enrutarlas por prefijo. No consulta bases de datos. | Ninguna |
+| SACI | 4001 | Autenticación, usuarios, instituciones receptoras, solicitudes, asignaciones, horas, evaluaciones y reportes. | PostgreSQL/Supabase |
+| SSRE | 4002 | Planes de clase, observaciones, talleres, entregas y quizzes. | MongoDB |
 
-- Backend: API REST con Express, PostgreSQL y MongoDB
-- Frontend: páginas HTML/JS estáticas para login, dashboard y branding por institución
+Cada servicio es el único propietario de su base de datos. SACI no consulta MongoDB; SSRE no importa ni consulta PostgreSQL. El gateway tampoco tiene conexiones de persistencia.
 
-## 2. Cómo se conecta todo
+## Flujo de una petición
 
-### Flujo principal
+1. El frontend identifica el tenant con `frontend/public/js/tenant.js` y envía la solicitud al gateway en el puerto 4000.
+2. El gateway enruta por prefijo y conserva el cuerpo y los encabezados de la solicitud:
+   - SACI recibe `/api/auth/*`, `/api/usuarios`, `/api/roles`, `/api/reportes/*`, solicitudes, asignaciones e instituciones receptoras.
+   - SSRE recibe `/api/practicas/planes-clase`, `/api/practicas/observaciones` y `/api/practicas/talleres`.
+3. El servicio destino valida el JWT, el rol y el tenant según corresponda, y consulta exclusivamente su base de datos.
+4. Cuando SSRE necesita validar tenant/asignación o acreditar horas, llama a SACI por REST. SACI realiza la operación en PostgreSQL y devuelve el resultado; SSRE persiste su información documental en MongoDB.
 
-1. El usuario entra a una URL con un tenant (por ejemplo `?tenant=udi` o `udi.localhost`).
-2. El archivo frontend/public/js/tenant.js detecta el tenant y llama a `/api/public/institucion`.
-3. El backend resuelve el tenant con el middleware `resolveTenant`, consultando la tabla `instituciones` en PostgreSQL.
-4. El sistema guarda `req.tenant` con el contexto de la institución actual.
-5. El login valida credenciales contra `usuarios` y genera un JWT con `institucionId`.
-6. Cada petición autenticada debe pasar por `requireAuth` y comparar el token con `req.tenant.id`.
-7. Las rutas de negocio usan ese tenant para filtrar datos y evitar cruzarse entre instituciones.
+## API interna de SACI
 
-### Relación entre capas
+SACI expone operaciones internas bajo `/internal/ssre/*`. No se enrutan desde el gateway público. SSRE las llama mediante `src/services/saciClient.js` e incluye el encabezado `X-Internal-Service-Token`, cuyo valor debe coincidir con `SACI_INTERNAL_TOKEN` en SACI y SSRE.
 
-- `frontend/public/*.html`: interfaz del usuario
-- `frontend/public/js/tenant.js`: lógica de detección de tenant y branding
-- `backend/src/app.js`: ensamblaje de la API
-- `backend/src/server.js`: arranque del servidor y conexión a bases de datos
-- `backend/src/routes/*.js`: endpoints públicos y protegidos
-- `backend/src/controllers/*.js`: lógica de negocio
-- `backend/src/middleware/*.js`: validación de tenant y JWT
-- `backend/src/config/*.js`: conexiones a PostgreSQL y MongoDB
-- `backend/database/schema.sql`: esquema de datos relacional
-- `backend/src/models/mongo/*.js`: modelos de documentos en MongoDB
+| Endpoint interno | Uso |
+| --- | --- |
+| `POST /internal/ssre/tenant` | Validar y resolver el tenant. |
+| `POST /internal/ssre/asignaciones/listar` | Listar asignaciones de un estudiante o docente. |
+| `POST /internal/ssre/asignaciones/validar` | Autorizar una asignación según tenant, usuario y rol. Para un docente, `estudianteId` es opcional: si no se envía, valida que el docente sea dueño de la asignación. |
+| `POST /internal/ssre/asignaciones/:id/acreditar-horas` | Acreditar horas en PostgreSQL con una clave idempotente. |
 
-## 3. Base de datos y responsabilidad de cada una
+Si SACI no responde o vence el tiempo de espera, el cliente REST de SSRE informa un error HTTP 503. SSRE no intenta conectarse directamente a PostgreSQL como alternativa.
 
-### PostgreSQL: datos estructurados y transaccionales
+## Organización del código
 
-Se usa para todo lo que requiere integridad, relaciones y consultas filtradas por institución.
+- `backend/src/apps/`: composición de las aplicaciones de gateway, SACI y SSRE.
+- `backend/src/server.js`: arranque del gateway.
+- `backend/src/services/saci.server.js` y `ssre.server.js`: arranque de los servicios.
+- `backend/src/routes/practicas-saci.routes.js` y `practicas-ssre.routes.js`: rutas públicas separadas por propietario.
+- `backend/src/controllers/practicas-saci.controller.js`: handlers relacionales; solo usa PostgreSQL.
+- `backend/src/controllers/practicas-ssre.controller.js`: handlers documentales; usa modelos MongoDB y `saciClient`.
+- `backend/src/controllers/ssre-internal.controller.js`: handlers de la API interna, ejecutados dentro de SACI.
+- `backend/src/services/saciClient.js`: cliente REST interno de SSRE hacia SACI.
+- `backend/src/middleware/resolveTenant.js`: resolución de tenant en SACI.
+- `backend/src/middleware/resolveTenantFromSaci.js`: resolución remota de tenant en SSRE.
 
-Archivos principales:
+## Aislamiento multi-tenant y seguridad
 
-- `backend/database/schema.sql`
-- `backend/src/config/postgres.js`
-- `backend/src/controllers/auth.controller.js`
-- `backend/src/controllers/practicas.controller.js`
-- `backend/src/controllers/reportes.controller.js`
+- SACI filtra sus consultas relacionales con `institucion_id`.
+- SSRE guarda y filtra documentos con `tenantId`.
+- El JWT identifica al usuario y su institución; las rutas verifican rol y tenant.
+- La API interna requiere el token de servicio y no forma parte de las rutas públicas.
+- Los servicios SACI y SSRE deben mantenerse en una red privada; el gateway es la entrada pública.
 
-Tablas principales:
+## Arranque y comprobación
 
-- `instituciones`: universidades o clientes del SaaS
-- `usuarios`: estudiantes, docentes, directores, etc.
-- `instituciones_receptoras`: centros donde se realiza la práctica
-- `asignaciones_practica`: vínculo entre estudiante y docente con entidad receptora
-- `evaluaciones`: calificaciones formales
+Desde `backend`, inicia cada proceso en una terminal independiente:
 
-Cada tabla incluye `institucion_id`, lo que garantiza aislamiento multi-tenant.
+```powershell
+npm run dev:gateway
+npm run dev:saci
+npm run dev:ssre
+```
 
-### MongoDB: datos flexibles y documentales
+Comprueba los endpoints de salud:
 
-Se usa para información con estructura variable o narrativa, como planes de clase y observaciones.
+```powershell
+Invoke-RestMethod http://localhost:4000/health
+Invoke-RestMethod http://localhost:4001/health
+Invoke-RestMethod http://localhost:4002/health
+```
 
-Archivos principales:
-
-- `backend/src/config/mongo.js`
-- `backend/src/models/mongo/PlanClase.js`
-- `backend/src/models/mongo/Observacion.js`
-- `backend/src/models/mongo/HojaVida.js`
-- `backend/src/controllers/practicas.controller.js`
-
-Colecciones/documentos:
-
-- `PlanClase`: contenido libre de plan de clase por asignación
-- `Observacion`: comentarios del docente por seguimiento o visita
-- `HojaVida`: datos académicos y experiencia del estudiante
-
-## 4. Módulos del backend y para qué sirven
-
-### `backend/src/app.js`
-
-Define la API principal y monta los recursos por prefijo:
-
-- `/api/public`: info institucional antes de login
-- `/api/auth`: autenticación y emisión de token
-- `/api/practicas`: gestión de asignaciones y seguimiento
-- `/api/reportes`: indicadores resumen para el director
-
-### `backend/src/server.js`
-
-Es el punto de entrada real del servidor. Verifica que PostgreSQL y MongoDB estén activos antes de levantar Express.
-
-### `backend/src/middleware/resolveTenant.js`
-
-Resuelve a qué institución pertenece la petición. Usa el subdominio real o un valor de pruebas en local (`X-Tenant` o `?tenant=`). Guarda `req.tenant` y evita que un usuario se autentique en otra universidad.
-
-### `backend/src/middleware/auth.js`
-
-Valida el JWT y limita acceso por roles:
-
-- `requireAuth`: exige sesión válida
-- `requireRole(...roles)`: restringe acciones a roles permitidos
-
-### `backend/src/routes/auth.routes.js`
-
-Expone el login. Conecta `POST /api/auth/login` con el controlador `login`.
-
-### `backend/src/routes/public.routes.js`
-
-Entrega información pública de una institución, como nombre, colores y logo. Es usada por el frontend para "vestirse" con la identidad visual del tenant.
-
-### Servicios SACI y SSRE
-
-`backend/src/apps/gateway.app.js` enruta las solicitudes del frontend por
-prefijo, sin parsear los cuerpos de las solicitudes para preservar cargas
-multipart y descargas. `practicas-saci.routes.js` contiene las rutas de
-PostgreSQL; `practicas-ssre.routes.js` contiene las rutas respaldadas por
-MongoDB.
-
-SSRE no consulta PostgreSQL directamente. Usa `services/saciClient.js` para
-validar tenant y asignaciones, y para acreditar horas a través de la API interna
-protegida por `SACI_INTERNAL_TOKEN`. La tabla `acreditaciones_horas` registra
-claves idempotentes para que reintentos de una entrega no dupliquen las horas.
-El gateway enruta únicamente tráfico público y no publica las rutas internas.
-
-### `backend/src/routes/reportes.routes.js`
-
-Entrega indicadores agregados al director del programa. Solo un `director` puede acceder.
-
-### `backend/src/controllers/auth.controller.js`
-
-Realiza la autenticación del usuario, consulta en PostgreSQL por `institucion_id + email`, compara contraseña y firma JWT.
-
-### `backend/src/controllers/practicas.controller.js`
-
-Contiene manejadores del dominio de prácticas registrados por rutas separadas:
-SACI ejecuta los manejadores relacionales y SSRE los documentales, con llamadas
-REST de SSRE a SACI cuando necesita validar una asignación o acreditar horas.
-
-### `backend/src/controllers/reportes.controller.js`
-
-Genera los indicadores para el director: total de estudiantes, docentes y porcentaje promedio de cumplimiento de horas.
-
-## 5. Frontend y cómo se conecta con el backend
-
-### `frontend/public/js/tenant.js`
-
-Es el archivo central para identificar el tenant actual y personalizar la interfaz.
-
-Funciones clave:
-
-- `detectarTenantSlug()`: obtiene el tenant desde la URL, el host o localStorage
-- `redirectToLogin(tenant)`: redirige a la vista de login con el tenant en la query
-- `cargarInstitucion()`: llama a `/api/public/institucion`
-- `aplicarBranding(institucion)`: cambia colores y nombre de la institución en la UI
-
-### `frontend/public/login.html`
-
-Form de ingreso. Se conecta al backend con `POST /api/auth/login` usando `X-Tenant` y almacena el JWT en `localStorage`.
-
-### `frontend/public/dashboard.html`
-
-Panel principal del usuario. Muestra datos de asignación y, si la persona es director, un resumen de indicadores. Usa `Authorization: Bearer <token>` para consultar rutas protegidas.
-
-## 6. Rutas clave del sistema
-
-### Público
-
-- `GET /health`: verificación de salud del backend
-- `GET /api/public/institucion`: devuelve metadata del tenant
-
-### Autenticación
-
-- `POST /api/auth/login`: valida credenciales y entrega JWT
-
-### Prácticas
-
-- `GET /api/practicas/asignaciones`: lista asignaciones de la institución
-- `POST /api/practicas/asignaciones`: crea una asignación
-- `GET /api/practicas/planes-clase`: lista planes por tenant/asignación
-- `POST /api/practicas/planes-clase`: crea un plan de clase
-- `GET /api/practicas/observaciones`: lista observaciones
-- `POST /api/practicas/observaciones`: crea observación
-
-### Reportes
-
-- `GET /api/reportes/resumen`: indicadores del director
-
-## 7. Seguridad y aislamiento multi-tenant
-
-La seguridad no está en la interfaz; está en el backend:
-
-- `resolveTenant` identifica la institución antes de autorizar cualquier operación.
-- `requireAuth` verifica el JWT.
-- `requireRole` restringe permisos por rol.
-- `login` consulta por `institucion_id` y `email` simultáneamente.
-- Los controladores consultan `req.tenant.id` para filtrar consultas.
-
-Esto evita que un usuario de una universidad pueda ver o modificar datos de otra.
-
-## 8. Cómo seguir desarrollando
-
-Si quieres ampliar el sistema, la forma recomendada es:
-
-1. Agregar nueva tabla o colección si la entidad requiere relación o flexibilidad.
-2. Crear la ruta en el folder `backend/src/routes`.
-3. Añadir el controlador correspondiente en `backend/src/controllers`.
-4. Usar `req.tenant.id` en todas las consultas.
-5. Mantener la autenticación y roles centralizados en `middleware/auth.js`.
-6. Conectar la vista frontend a la API con fetch y `X-Tenant` cuando corresponda.
-
-## 9. Resumen corto
-
-Este proyecto combina:
-
-- PostgreSQL para lo estructurado y seguro
-- MongoDB para contenido flexible y narrativo
-- Express para la API
-- JWT para la identidad
-- tenant-aware routing para aislar universidades
-- frontend simple con branding dinámico por institución
-
-Todo está conectado para que cada universidad tenga su propia data, lógica y visualización sin interferir con el resto.
+Las respuestas identifican respectivamente `gateway`, `SACI` y `SSRE`.

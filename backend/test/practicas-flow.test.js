@@ -1,8 +1,10 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const practicas = require('../src/controllers/practicas.controller');
+const practicasSaci = require('../src/controllers/practicas-saci.controller');
+const practicasSsre = require('../src/controllers/practicas-ssre.controller');
 const postgres = require('../src/config/postgres');
 const Observacion = require('../src/models/mongo/Observacion');
+const saciClient = require('../src/services/saciClient');
 
 async function withMockedQuery(testFn) {
   const originalQuery = postgres.query;
@@ -43,7 +45,7 @@ test('lista instituciones receptoras del tenant', async () => {
       assert.equal(payload[0].nombre, 'Colegio Demo');
     } };
 
-    await practicas.listarInstitucionesReceptoras(req, res, () => {});
+    await practicasSaci.listarInstitucionesReceptoras(req, res, () => {});
   });
 });
 
@@ -55,7 +57,7 @@ test('crea una institución receptora con el tenant actual', async () => {
       assert.equal(payload.nombre, 'Colegio Nuevo');
     } }) };
 
-    await practicas.crearInstitucionReceptora(req, res, () => {});
+    await practicasSaci.crearInstitucionReceptora(req, res, () => {});
   });
 });
 
@@ -68,7 +70,7 @@ test('lista usuarios por rol en el tenant', async () => {
       assert.equal(payload[0].rol, 'estudiante');
     } };
 
-    await practicas.listarUsuariosPorRol(req, res, () => {});
+    await practicasSaci.listarUsuariosPorRol(req, res, () => {});
   });
 });
 
@@ -91,7 +93,7 @@ test('actualiza horas cumplidas de una asignación', async () => {
       assert.equal(payload.estado, 'en_curso');
     } };
 
-    await practicas.actualizarHorasAsignacion(req, res, () => {});
+    await practicasSaci.actualizarHorasAsignacion(req, res, () => {});
   } finally {
     postgres.query = originalQuery;
   }
@@ -113,7 +115,7 @@ test('registra una evaluación académica para la asignación', async () => {
       assert.equal(payload.calificacion, 4.5);
     } }) };
 
-    await practicas.crearEvaluacion(req, res, () => {});
+    await practicasSaci.crearEvaluacion(req, res, () => {});
   } finally {
     postgres.query = originalQuery;
   }
@@ -146,7 +148,7 @@ test('crea una asignación sin institución receptora y usa el tenant actual', a
       assert.equal(payload.institucion_id, 'tenant-1');
     } }) };
 
-    await practicas.crearAsignacion(req, res, () => {});
+    await practicasSaci.crearAsignacion(req, res, () => {});
     assert.deepEqual(capturedParams, ['tenant-1', 'u1', 'd1', null, '2026-10-01', null, 120]);
   } finally {
     postgres.query = originalQuery;
@@ -156,10 +158,11 @@ test('crea una asignación sin institución receptora y usa el tenant actual', a
 test('guarda el seguimiento vinculado al tenant, asignación y docente', async () => {
   const originalQuery = postgres.query;
   const originalCreate = Observacion.create;
+  const validarAsignacionOriginal = saciClient.validarAsignacion;
   let savedObservation;
-  postgres.query = async (_text, params) => {
-    assert.deepEqual(params, ['tenant-1', 'a1', 'd1']);
-    return { rows: [{ id: 'a1' }] };
+  saciClient.validarAsignacion = async (...params) => {
+    assert.deepEqual(params, ['tenant-1', 'd1', 'docente_asesor', 'a1', null]);
+    return true;
   };
   Observacion.create = async (document) => {
     savedObservation = document;
@@ -177,12 +180,13 @@ test('guarda el seguimiento vinculado al tenant, asignación y docente', async (
       assert.equal(payload.observacion, 'Visita realizada');
     } }) };
 
-    await practicas.crearObservacion(req, res, () => {});
+    await practicasSsre.crearObservacion(req, res, () => {});
     assert.equal(savedObservation.tenantId, 'tenant-1');
     assert.equal(savedObservation.asignacionId, 'a1');
     assert.equal(savedObservation.docenteId, 'd1');
   } finally {
     postgres.query = originalQuery;
+    saciClient.validarAsignacion = validarAsignacionOriginal;
     Observacion.create = originalCreate;
   }
 });
@@ -236,7 +240,7 @@ test('un estudiante puede crear una solicitud de práctica', async () => {
       assert.equal(payload.estado, 'pendiente');
     } }) };
 
-    await practicas.crearSolicitudPractica(req, res, () => {});
+    await practicasSaci.crearSolicitudPractica(req, res, () => {});
     assert.deepEqual(capturedParams, ['tenant-1', 'u1', null, 'Práctica docente terminal', 6, '2026-12-01', null, 120]);
   } finally {
     postgres.query = originalQuery;
@@ -265,7 +269,7 @@ test('informa cupo disponible y máximo de 20 estudiantes por docente', async ()
       assert.equal(payload[1].capacidad_disponible, 0);
     } };
 
-    await practicas.listarDisponibilidadDocentes(req, res, () => {});
+    await practicasSaci.listarDisponibilidadDocentes(req, res, () => {});
   } finally {
     postgres.query = originalQuery;
   }
