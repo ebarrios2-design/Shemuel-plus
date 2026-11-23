@@ -6,10 +6,12 @@
  */
 const express = require('express');
 const router = express.Router();
-const { verificarCorreo, login } = require('../controllers/auth.controller');
+const { verificarCorreo, login, cambiarPassword } = require('../controllers/auth.controller');
+const { requireAuth } = require('../middleware/auth');
 
-// Ambas rutas requieren que resolveTenant haya identificado el tenant.
+// Estas rutas requieren que resolveTenant haya identificado el tenant.
 router.post('/verificar-correo', verificarCorreo);
 router.post('/login', login);
+router.post('/cambiar-password', requireAuth, cambiarPassword);
 
 module.exports = router;

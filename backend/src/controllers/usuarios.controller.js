@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
-const { query } = require('../config/postgres');
+const postgres = require('../config/postgres');
+const query = (...args) => postgres.query(...args);
 
 const ROLES = ['estudiante', 'docente_asesor', 'institucion_receptora', 'director'];
 
@@ -98,8 +99,10 @@ async function crearUsuario(req, res, next) {
 
     const passwordHash = await bcrypt.hash(password, 10);
     const { rows } = await query(
-      `INSERT INTO usuarios (institucion_id, nombre_completo, email, password_hash, rol, activo)
-       VALUES ($1, $2, $3, $4, $5, TRUE)
+      `INSERT INTO usuarios (
+         institucion_id, nombre_completo, email, password_hash, rol, activo, requiere_cambio_password
+       )
+       VALUES ($1, $2, $3, $4, $5, TRUE, TRUE)
        RETURNING id, nombre_completo, email, rol, activo, creado_en`,
       [req.tenant.id, nombreCompleto.trim(), emailNormalizado, passwordHash, rolValido]
     );
@@ -151,6 +154,7 @@ async function actualizarUsuario(req, res, next) {
       campos.push(`password_hash = $${index}`);
       params.push(passwordHash);
       index += 1;
+      campos.push('requiere_cambio_password = TRUE');
     }
 
     if (campos.length === 0) {

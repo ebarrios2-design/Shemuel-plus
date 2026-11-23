@@ -7,7 +7,14 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
+    "start:gateway": "node src/server.js",
+    "start:saci": "node src/services/saci.server.js",
+    "start:ssre": "node src/services/ssre.server.js",
+    "dev:gateway": "nodemon src/server.js",
+    "dev:saci": "nodemon src/services/saci.server.js",
+    "dev:ssre": "nodemon src/services/ssre.server.js",
     "db:init": "node database/init.js",
+    "db:seed:institution-admins": "node database/seed-institution-admins.js",
     "db:migrate:supabase": "node database/migrate-to-supabase.js"
   },
   "dependencies": {

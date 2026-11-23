@@ -1,7 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const practicas = require('../src/controllers/practicas.controller');
-const postgres = require('../src/config/postgres');
+const saciClient = require('../src/services/saciClient');
 const Taller = require('../src/models/mongo/Taller');
 const EntregaTaller = require('../src/models/mongo/EntregaTaller');
 
@@ -21,12 +21,12 @@ function respuestaFalsa() {
 }
 
 test('crea talleres solo para una asignación del docente del tenant', async () => {
-  const queryOriginal = postgres.query;
+  const validarAsignacionOriginal = saciClient.validarAsignacion;
   const crearOriginal = Taller.create;
   let documentoGuardado;
-  postgres.query = async (_sql, params) => {
-    assert.deepEqual(params, ['tenant-1', 'asignacion-1', 'docente-1']);
-    return { rows: [{ id: 'asignacion-1' }] };
+  saciClient.validarAsignacion = async (...params) => {
+    assert.deepEqual(params, ['tenant-1', 'docente-1', 'docente_asesor', 'asignacion-1']);
+    return true;
   };
   Taller.create = async (documento) => {
     documentoGuardado = documento;
@@ -57,15 +57,15 @@ test('crea talleres solo para una asignación del docente del tenant', async () 
     assert.equal(documentoGuardado.docenteId, 'docente-1');
     assert.equal(documentoGuardado.preguntas[0].respuestaCorrecta, 1);
   } finally {
-    postgres.query = queryOriginal;
+    saciClient.validarAsignacion = validarAsignacionOriginal;
     Taller.create = crearOriginal;
   }
 });
 
 test('rechaza preguntas de quiz inválidas antes de consultar la base de datos', async () => {
-  const queryOriginal = postgres.query;
-  postgres.query = async () => {
-    assert.fail('No debe consultar la base de datos con preguntas inválidas.');
+  const validarAsignacionOriginal = saciClient.validarAsignacion;
+  saciClient.validarAsignacion = async () => {
+    assert.fail('No debe consultar SACI con preguntas inválidas.');
   };
 
   try {
@@ -89,12 +89,12 @@ test('rechaza preguntas de quiz inválidas antes de consultar la base de datos',
 
     assert.equal(res.statusCode, 400);
   } finally {
-    postgres.query = queryOriginal;
+    saciClient.validarAsignacion = validarAsignacionOriginal;
   }
 });
 
 test('no expone la respuesta correcta al estudiante en la lista de talleres', async () => {
-  const queryOriginal = postgres.query;
+  const listarAsignacionesOriginal = saciClient.listarAsignaciones;
   const buscarTalleresOriginal = Taller.find;
   const buscarEntregasOriginal = EntregaTaller.find;
   const taller = {
@@ -107,7 +107,11 @@ test('no expone la respuesta correcta al estudiante en la lista de talleres', as
       respuestaCorrecta: 1,
     }],
   };
-  postgres.query = async () => ({ rows: [{ id: 'asignacion-1' }] });
+  saciClient.listarAsignaciones = async () => [{
+    id: 'asignacion-1',
+    estudiante_id: 'estudiante-1',
+    estudiante: 'Estudiante Uno',
+  }];
   Taller.find = () => ({
     sort() { return this; },
     lean: async () => [taller],
@@ -132,28 +136,24 @@ test('no expone la respuesta correcta al estudiante en la lista de talleres', as
     assert.equal(res.payload[0].preguntas[0].pregunta, '¿Cuál es correcta?');
     assert.equal('respuestaCorrecta' in res.payload[0].preguntas[0], false);
   } finally {
-    postgres.query = queryOriginal;
+    saciClient.listarAsignaciones = listarAsignacionesOriginal;
     Taller.find = buscarTalleresOriginal;
     EntregaTaller.find = buscarEntregasOriginal;
   }
 });
 
 test('permite una entrega tardía y acredita sus tres horas una sola vez', async () => {
-  const queryOriginal = postgres.query;
+  const validarAsignacionOriginal = saciClient.validarAsignacion;
+  const acreditarHorasOriginal = saciClient.acreditarHoras;
   const buscarTallerOriginal = Taller.findOne;
   const buscarEntregaOriginal = EntregaTaller.findOne;
   const actualizarEntregaOriginal = EntregaTaller.findOneAndUpdate;
   let busquedasEntrega = 0;
   let actualizacionesEntrega = 0;
-  let queryHoras;
+  let horasAcreditadas;
 
-  postgres.query = async (sql, params) => {
-    if (sql.includes('UPDATE asignaciones_practica')) {
-      queryHoras = params;
-      return { rows: [{ id: 'asignacion-1' }] };
-    }
-    return { rows: [{ id: 'asignacion-1' }] };
-  };
+  saciClient.validarAsignacion = async () => true;
+  saciClient.acreditarHoras = async (...params) => { horasAcreditadas = params; };
   Taller.findOne = async () => ({
     _id: '507f1f77bcf86cd799439011',
     asignacionId: 'asignacion-1',
@@ -194,10 +194,16 @@ test('permite una entrega tardía y acredita sus tres horas una sola vez', async
     assert.equal(res.statusCode, 201);
     assert.equal(res.payload.entregaTardia, true);
     assert.equal(res.payload.horasActividad, 3);
-    assert.deepEqual(queryHoras, [3, 'tenant-1', 'asignacion-1']);
+    assert.deepEqual(horasAcreditadas, [
+      'tenant-1',
+      'asignacion-1',
+      3,
+      'horasActividadAcreditadas:entrega-1',
+    ]);
     assert.equal(actualizacionesEntrega, 2);
   } finally {
-    postgres.query = queryOriginal;
+    saciClient.validarAsignacion = validarAsignacionOriginal;
+    saciClient.acreditarHoras = acreditarHorasOriginal;
     Taller.findOne = buscarTallerOriginal;
     EntregaTaller.findOne = buscarEntregaOriginal;
     EntregaTaller.findOneAndUpdate = actualizarEntregaOriginal;
@@ -205,7 +211,8 @@ test('permite una entrega tardía y acredita sus tres horas una sola vez', async
 });
 
 test('califica el quiz en el servidor y acredita una hora al finalizar', async () => {
-  const queryOriginal = postgres.query;
+  const validarAsignacionOriginal = saciClient.validarAsignacion;
+  const acreditarHorasOriginal = saciClient.acreditarHoras;
   const buscarTallerOriginal = Taller.findOne;
   const buscarEntregaOriginal = EntregaTaller.findOne;
   const actualizarEntregaOriginal = EntregaTaller.findOneAndUpdate;
@@ -219,15 +226,10 @@ test('califica el quiz en el servidor y acredita una hora al finalizar', async (
     respuestas: [],
     save: async () => {},
   };
-  let queryHoras;
+  let horasAcreditadas;
 
-  postgres.query = async (sql, params) => {
-    if (sql.includes('UPDATE asignaciones_practica')) {
-      queryHoras = params;
-      return { rows: [{ id: 'asignacion-1' }] };
-    }
-    return { rows: [{ id: 'asignacion-1' }] };
-  };
+  saciClient.validarAsignacion = async () => true;
+  saciClient.acreditarHoras = async (...params) => { horasAcreditadas = params; };
   Taller.findOne = async () => ({ _id: '507f1f77bcf86cd799439011', asignacionId: 'asignacion-1', preguntas });
   EntregaTaller.findOne = async () => entrega;
   EntregaTaller.findOneAndUpdate = async () => ({ _id: 'entrega-2' });
@@ -245,10 +247,16 @@ test('califica el quiz en el servidor y acredita una hora al finalizar', async (
 
     assert.equal(res.payload.puntaje, 100);
     assert.equal(res.payload.totalPreguntas, 2);
-    assert.deepEqual(queryHoras, [1, 'tenant-1', 'asignacion-1']);
+    assert.deepEqual(horasAcreditadas, [
+      'tenant-1',
+      'asignacion-1',
+      1,
+      'horasQuizAcreditadas:entrega-2',
+    ]);
     assert.ok(entrega.quizFinalizadoEn instanceof Date);
   } finally {
-    postgres.query = queryOriginal;
+    saciClient.validarAsignacion = validarAsignacionOriginal;
+    saciClient.acreditarHoras = acreditarHorasOriginal;
     Taller.findOne = buscarTallerOriginal;
     EntregaTaller.findOne = buscarEntregaOriginal;
     EntregaTaller.findOneAndUpdate = actualizarEntregaOriginal;

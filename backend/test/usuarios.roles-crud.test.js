@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const bcrypt = require('bcryptjs');
 
 const postgres = require('../src/config/postgres');
 
@@ -21,6 +22,8 @@ async function withMockedQuery(testFn) {
     }
 
     if (normalized.includes('INSERT INTO usuarios')) {
+      assert.match(normalized, /requiere_cambio_password/);
+      assert.match(normalized, /TRUE, TRUE/);
       return {
         rows: [{
           id: 'u2',
@@ -62,6 +65,43 @@ test('lista los roles disponibles del sistema', async () => {
 
     await listarRoles(req, res, () => {});
   });
+
+});
+
+test('restablece la contraseña temporal y obliga al usuario a cambiarla', async () => {
+  const originalQuery = postgres.query;
+  let updateParams;
+  postgres.query = async (text, params) => {
+    assert.match(text, /requiere_cambio_password = TRUE/);
+    assert.match(text, /WHERE institucion_id = \$1 AND id = \$2/);
+    updateParams = params;
+    return {
+      rows: [{
+        id: 'u1',
+        nombre_completo: 'Ana',
+        email: 'ana@demo.com',
+        rol: 'director',
+        activo: true,
+      }],
+    };
+  };
+
+  try {
+    const { actualizarUsuario } = require('../src/controllers/usuarios.controller');
+    const req = {
+      tenant: { id: 'tenant-1' },
+      params: { id: 'u1' },
+      body: { password: 'ClaveTemporal123' },
+    };
+    const res = { json: (payload) => assert.equal(payload.id, 'u1') };
+
+    await actualizarUsuario(req, res, (err) => { throw err; });
+
+    assert.deepEqual(updateParams.slice(0, 2), ['tenant-1', 'u1']);
+    assert.equal(await bcrypt.compare('ClaveTemporal123', updateParams[2]), true);
+  } finally {
+    postgres.query = originalQuery;
+  }
 });
 
 test('lista usuarios filtrados por rol dentro del tenant', async () => {

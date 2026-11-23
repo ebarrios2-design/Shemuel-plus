@@ -6,10 +6,19 @@ Shemuel Plus es un prototipo de plataforma SaaS multi-tenant para la gestión de
 
 ## Arquitectura general
 
-La aplicación se estructura en dos capas principales:
+El frontend estático consume un gateway Express en el puerto 4000. El gateway
+conserva las rutas públicas existentes y enruta las solicitudes por prefijo a
+dos servicios independientes:
 
-- Frontend estático: páginas HTML + JavaScript para login, dashboard y personalización visual
-- Backend API: Express + PostgreSQL + MongoDB para lógica empresarial, autenticación y datos
+- **SACI** (puerto 4001): autenticación, usuarios, instituciones receptoras,
+  solicitudes, asignaciones, evaluaciones y reportes; usa PostgreSQL/Supabase.
+- **SSRE** (puerto 4002): planes, observaciones, talleres, entregas y quizzes;
+  usa MongoDB.
+
+SSRE consulta a SACI por REST para comprobar las asignaciones y acreditar horas.
+La acreditación usa una clave idempotente para impedir que los reintentos sumen
+horas más de una vez. SACI y SSRE solo escuchan en localhost por defecto; el
+gateway es el punto de entrada público.
 
 ## Flujo real de uso
 
@@ -18,7 +27,8 @@ La aplicación se estructura en dos capas principales:
 3. El backend resuelve el tenant con `resolveTenant`, que consulta la tabla `instituciones` en PostgreSQL.
 4. El usuario verifica su correo con `/api/auth/verificar-correo` y después inicia sesión en `/api/auth/login`; ambas operaciones se limitan a `institucion_id`.
 5. Las rutas protegidas validan el token con `requireAuth` y restringen permisos con `requireRole`.
-6. Los controladores consultan datos de PostgreSQL o MongoDB, siempre filtrados por `req.tenant.id`.
+6. SACI y SSRE consultan sus respectivas bases, siempre filtrando por el tenant
+   validado.
 
 ## Tecnologías principales
 
@@ -31,13 +41,17 @@ La aplicación se estructura en dos capas principales:
 ## Estructura del proyecto
 
 - `backend/`: API y persistencia
-  - `src/app.js`: monta la aplicación y rutas
-  - `src/server.js`: arranque del backend y verificación de conexiones
+  - `src/apps/gateway.app.js`: gateway HTTP que enruta por prefijo
+  - `src/apps/saci.app.js`, `src/apps/ssre.app.js`: aplicaciones separadas
+  - `src/server.js`: arranque del gateway
+  - `src/services/saci.server.js`, `src/services/ssre.server.js`: arranque de los servicios
   - `src/config/postgres.js`: pool de PostgreSQL
   - `src/config/mongo.js`: conexión a MongoDB
   - `src/middleware/resolveTenant.js`: identifica la institución actual
   - `src/middleware/auth.js`: validación JWT y roles
-  - `src/routes/*.js`: endpoints por módulo
+  - `src/routes/practicas-saci.routes.js`: endpoints relacionales
+  - `src/routes/practicas-ssre.routes.js`: endpoints documentales y de talleres
+  - `src/routes/ssre-internal.routes.js`: API interna de SACI usada por SSRE
   - `src/controllers/*.js`: lógica de negocio
   - `src/models/mongo/*.js`: modelos documentales
   - `database/schema.sql`: esquema relacional
@@ -73,9 +87,9 @@ Usado para contenido con estructura flexible o narrativa, como:
 
 Esto permite guardar documentos con campos variados sin forzar un esquema rígido de SQL.
 
-El backend puede iniciar y mantener disponibles las funciones respaldadas por PostgreSQL
-si MongoDB no está conectado. Las rutas de datos documentales responden con HTTP 503
-hasta que MongoDB esté disponible; PostgreSQL sigue siendo requerido para iniciar la API.
+SACI funciona sin conectarse a MongoDB y SSRE no consulta directamente
+PostgreSQL. Si MongoDB no está disponible, las rutas documentales responden HTTP
+503. SSRE necesita SACI para validar tenants/asignaciones y acreditar horas.
 
 ### Talleres y horas de práctica
 
@@ -90,7 +104,17 @@ requeridas por la asignación.
 
 ### Actualización de bases existentes
 
-En bases inicializadas antes de permitir asignaciones sin institución receptora, aplica una vez `backend/database/migrations/001_optional_practice_receiver.sql`.
+En bases inicializadas antes de permitir asignaciones sin institución receptora, aplica una vez `backend/database/migrations/001_optional_practice_receiver.sql`. Para exigir el cambio de contraseñas temporales, aplica también `backend/database/migrations/005_password_change_required.sql`.
+
+Los roles `director` e `institucion_receptora` pueden gestionar usuarios únicamente dentro de su tenant y asignar cualquiera de los roles disponibles. Las cuentas nuevas y las contraseñas restablecidas exigen un cambio al iniciar sesión. Para aprovisionar las cuentas administrativas institucionales, configura temporalmente `INSTITUTION_ADMIN_INITIAL_PASSWORD` y ejecuta desde `backend`:
+
+```powershell
+$env:INSTITUTION_ADMIN_INITIAL_PASSWORD = "<contraseña temporal>"
+npm run db:seed:institution-admins
+Remove-Item Env:\INSTITUTION_ADMIN_INITIAL_PASSWORD
+```
+
+El aprovisionamiento usa los subdominios `udi` y `uan`; si se vuelve a ejecutar, restablece las contraseñas de esas dos cuentas y vuelve a exigir el cambio.
 
 ### Migrar PostgreSQL local a Supabase
 
@@ -107,14 +131,39 @@ $env:SUPABASE_DATABASE_URL = "postgresql://..."
 npm run db:migrate:supabase
 ```
 
+## Ejecutar los servicios
+
+Configura `backend/.env` con las conexiones de PostgreSQL/Supabase y MongoDB,
+los puertos y URL de servicio del archivo `.env.example`, y secretos fuertes
+en `JWT_SECRET` y `SACI_INTERNAL_TOKEN`. SACI y SSRE deben usar el mismo valor
+para ambos secretos; no es necesario configurarlos en el gateway. Aplica una vez
+`backend/database/migrations/004_idempotent_hours_credits.sql` en la base
+PostgreSQL existente antes de usar talleres que acrediten horas, y
+`backend/database/migrations/005_password_change_required.sql` para habilitar
+el cambio obligatorio de contraseñas temporales.
+
+Instala dependencias una sola vez desde `backend` (`npm ci`) y ejecuta cada
+proceso en una terminal distinta:
+
+```powershell
+npm run dev:gateway
+npm run dev:saci
+npm run dev:ssre
+```
+
+El frontend sigue usando el gateway en `http://localhost:4000`. Comprueba
+`/health` en los puertos 4000, 4001 y 4002. En despliegues, expón el gateway y
+mantén SACI y SSRE en una red privada; configura `SACI_URL` y `SSRE_URL` con las
+direcciones internas correspondientes y enlaza esos servicios a una interfaz
+accesible desde la red privada (por ejemplo, `SACI_HOST=0.0.0.0`).
+
 ## Conexión entre módulos
 
 - `tenant.js` -> llama a `/api/public/institucion` -> `public.routes.js`
 - `login.html` -> verifica correo e inicia sesión en `auth.routes.js` -> `auth.controller.js`
-- `dashboard.html` -> llama a `/api/practicas/*` y `/api/reportes/*`
-- `resolveTenant` -> llena `req.tenant` antes de cada ruta de negocio
-- `requireAuth` -> valida JWT y compara `institucionId` con `req.tenant.id`
-- `practicas.controller.js` -> consulta Postgres y Mongo dependiendo del tipo de dato
+- `dashboard.html` -> llama al gateway en `/api/practicas/*` y `/api/reportes/*`
+- SACI valida JWT en sus rutas y consulta PostgreSQL
+- SSRE valida JWT y solicita a SACI la validación del tenant/asignación y la acreditación de horas
 
 ## Endpoints principales
 

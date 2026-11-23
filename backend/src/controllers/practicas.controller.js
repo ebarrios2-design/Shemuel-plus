@@ -1,15 +1,18 @@
 /**
- * Controlador central del modulo de practicas.
+ * Manejadores del modulo de practicas, montados por separado en SACI y SSRE.
  *
- * Hace la union entre dos fuentes de verdad:
- * - PostgreSQL: asignaciones, docentes, estudiantes e instituciones receptoras
- * - MongoDB: planes de clase y observaciones pedagogicas
+ * Los handlers relacionales se ejecutan en SACI; los documentales, en SSRE.
+ * SSRE usa saciClient para validar asignaciones y acreditar horas.
  *
- * La clave es que todas las consultas se filtran con req.tenant.id para
- * mantener el aislamiento de cada universidad.
+ * Todas las consultas se filtran por el tenant validado en req.tenant.
  */
-const postgres = require('../config/postgres');
-const query = (...args) => postgres.query(...args);
+let postgres;
+const getPostgres = () => {
+  if (!postgres) postgres = require('../config/postgres');
+  return postgres;
+};
+const query = (...args) => getPostgres().query(...args);
+const saciClient = require('../services/saciClient');
 const PlanClase = require('../models/mongo/PlanClase');
 const Observacion = require('../models/mongo/Observacion');
 const Taller = require('../models/mongo/Taller');
@@ -35,14 +38,12 @@ async function buscarTaller(req, res) {
 }
 
 async function verificarAsignacion(req, taller, rol) {
-  const columna = rol === 'docente_asesor' ? 'docente_id' : 'estudiante_id';
-  const { rows } = await query(
-    `SELECT id
-     FROM asignaciones_practica
-     WHERE institucion_id = $1 AND id = $2 AND ${columna} = $3`,
-    [req.tenant.id, taller.asignacionId, req.user.sub]
+  return saciClient.validarAsignacion(
+    req.tenant.id,
+    req.user.sub,
+    rol,
+    taller.asignacionId
   );
-  return rows.length > 0;
 }
 
 async function acreditarHoras(req, asignacionId, horas, campoAcreditacion, entregaId) {
@@ -54,18 +55,12 @@ async function acreditarHoras(req, asignacionId, horas, campoAcreditacion, entre
   if (!reclamo) return;
 
   try {
-    const { rows } = await query(
-      `UPDATE asignaciones_practica
-       SET horas_cumplidas = LEAST(horas_requeridas, horas_cumplidas + $1),
-           estado = CASE
-             WHEN LEAST(horas_requeridas, horas_cumplidas + $1) >= horas_requeridas THEN 'finalizada'::estado_asignacion
-             ELSE 'en_curso'::estado_asignacion
-           END
-       WHERE institucion_id = $2 AND id = $3
-       RETURNING id`,
-      [horas, req.tenant.id, asignacionId]
+    await saciClient.acreditarHoras(
+      req.tenant.id,
+      asignacionId,
+      horas,
+      `${campoAcreditacion}:${entregaId}`
     );
-    if (rows.length === 0) throw new Error('No se encontró la asignación para acreditar las horas.');
   } catch (err) {
     await EntregaTaller.updateOne({ _id: entregaId }, { $set: { [campoAcreditacion]: false } });
     throw err;
@@ -98,13 +93,7 @@ function validarPreguntas(preguntas) {
 
 async function listarTalleres(req, res, next) {
   try {
-    const columna = req.user.rol === 'docente_asesor' ? 'docente_id' : 'estudiante_id';
-    const { rows } = await query(
-      `SELECT id
-       FROM asignaciones_practica
-       WHERE institucion_id = $1 AND ${columna} = $2`,
-      [req.tenant.id, req.user.sub]
-    );
+    const rows = await saciClient.listarAsignaciones(req.tenant.id, req.user.sub, req.user.rol);
     const asignacionIds = rows.map((row) => row.id);
     if (asignacionIds.length === 0) return res.json([]);
 
@@ -134,14 +123,7 @@ async function listarTalleres(req, res, next) {
       tenantId: req.tenant.id,
       tallerId: { $in: talleres.map((taller) => taller._id) },
     }, '-archivo.datos').lean();
-    const idsEstudiantes = [...new Set(entregas.map((entrega) => entrega.estudianteId))];
-    const nombresEstudiantes = idsEstudiantes.length
-      ? await query(
-        'SELECT id, nombre_completo FROM usuarios WHERE institucion_id = $1 AND id = ANY($2::uuid[])',
-        [req.tenant.id, idsEstudiantes]
-      )
-      : { rows: [] };
-    const nombrePorId = new Map(nombresEstudiantes.rows.map((row) => [row.id, row.nombre_completo]));
+    const nombrePorId = new Map(rows.map((row) => [row.estudiante_id, row.estudiante]));
     const entregasPorTaller = new Map();
     for (const entrega of entregas) {
       entrega.estudiante = nombrePorId.get(entrega.estudianteId) || 'Estudiante';
@@ -168,13 +150,12 @@ async function crearTaller(req, res, next) {
       return responderError(res, 400, 'Indica título, instrucciones y entre 1 y 20 preguntas válidas.');
     }
 
-    const { rows } = await query(
-      `SELECT id
-       FROM asignaciones_practica
-       WHERE institucion_id = $1 AND id = $2 AND docente_id = $3`,
-      [req.tenant.id, asignacionId, req.user.sub]
-    );
-    if (rows.length === 0) {
+    if (!await saciClient.validarAsignacion(
+      req.tenant.id,
+      req.user.sub,
+      'docente_asesor',
+      asignacionId
+    )) {
       return responderError(res, 404, 'Asignación no encontrada para este docente e institución.');
     }
 
@@ -344,13 +325,14 @@ async function descargarActividad(req, res, next) {
     } else {
       const { estudianteId } = req.query;
       if (!estudianteId) return responderError(res, 400, 'Indica el estudiante de la entrega.');
-      const { rows } = await query(
-        `SELECT id
-         FROM asignaciones_practica
-         WHERE institucion_id = $1 AND id = $2 AND docente_id = $3 AND estudiante_id = $4`,
-        [req.tenant.id, taller.asignacionId, req.user.sub, estudianteId]
+      const autorizado = await saciClient.validarAsignacion(
+        req.tenant.id,
+        req.user.sub,
+        'docente_asesor',
+        taller.asignacionId,
+        estudianteId
       );
-      if (rows.length === 0) return responderError(res, 404, 'Entrega no encontrada para este docente.');
+      if (!autorizado) return responderError(res, 404, 'Entrega no encontrada para este docente.');
       filtro.estudianteId = estudianteId;
     }
     const entrega = await EntregaTaller.findOne(filtro);
@@ -555,7 +537,7 @@ async function listarUsuariosPorRol(req, res, next) {
 // ---------- PostgreSQL: asignaciones de practica ----------
 
 async function crearSolicitudPractica(req, res, next) {
-  const client = await postgres.pool.connect();
+  const client = await getPostgres().pool.connect();
   try {
     const {
       practicaSolicitada,
@@ -758,7 +740,7 @@ async function descargarDocumentoSolicitud(req, res, next) {
 }
 
 async function aprobarSolicitudPractica(req, res, next) {
-  const client = await postgres.pool.connect();
+  const client = await getPostgres().pool.connect();
   try {
     await client.query('BEGIN');
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [req.tenant.id]);

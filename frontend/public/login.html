@@ -62,6 +62,35 @@
         Usuario de prueba (datos locales): <code>ana.torres@udi.demo</code> / <code>Practica2026*</code>
       </p>
     </form>
+
+    <form id="change-password-form" hidden>
+      <div class="auth-email-row">
+        <span id="change-password-email"></span>
+      </div>
+      <div class="field">
+        <label for="new-password">Nueva contraseña</label>
+        <input
+          type="password"
+          id="new-password"
+          required
+          minlength="10"
+          autocomplete="new-password"
+          placeholder="Mínimo 10 caracteres"
+        />
+      </div>
+      <div class="field">
+        <label for="confirm-password">Confirma la nueva contraseña</label>
+        <input
+          type="password"
+          id="confirm-password"
+          required
+          minlength="10"
+          autocomplete="new-password"
+          placeholder="Repite la nueva contraseña"
+        />
+      </div>
+      <button class="btn btn-primary auth-submit" id="submit-password-change" type="submit">Guardar contraseña</button>
+    </form>
   </section>
 </main>
 
@@ -69,12 +98,16 @@
 <script>
   const emailForm = document.getElementById('email-form');
   const passwordForm = document.getElementById('password-form');
+  const changePasswordForm = document.getElementById('change-password-form');
   const emailInput = document.getElementById('email');
   const passwordInput = document.getElementById('password');
+  const newPasswordInput = document.getElementById('new-password');
+  const confirmPasswordInput = document.getElementById('confirm-password');
   const errorBox = document.getElementById('error');
   const stepTitle = document.getElementById('step-title');
   const stepDescription = document.getElementById('step-description');
   const verifiedEmail = document.getElementById('verified-email');
+  let tokenPendienteCambio = null;
 
   function showError(message) {
     errorBox.textContent = message;
@@ -165,12 +198,68 @@
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'No se pudo iniciar sesión.');
 
+      if (data.requiereCambioPassword) {
+        tokenPendienteCambio = data.token;
+        emailForm.hidden = true;
+        passwordForm.hidden = true;
+        changePasswordForm.hidden = false;
+        document.getElementById('change-password-email').textContent = data.usuario.email;
+        stepTitle.textContent = 'Actualiza tu contraseña';
+        stepDescription.textContent = 'Por seguridad, debes cambiar la contraseña temporal antes de continuar.';
+        newPasswordInput.focus();
+        return;
+      }
+
       localStorage.setItem('shemuel_token', data.token);
       localStorage.setItem('shemuel_user', JSON.stringify(data.usuario));
       window.location.href = 'dashboard.html';
     } catch (err) {
       showError(err.message);
       passwordInput.focus();
+    } finally {
+      button.disabled = false;
+    }
+  });
+
+  changePasswordForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    hideError();
+
+    if (!changePasswordForm.reportValidity()) return;
+    if (newPasswordInput.value !== confirmPasswordInput.value) {
+      showError('Las contraseñas nuevas no coinciden.');
+      confirmPasswordInput.focus();
+      return;
+    }
+
+    const slug = tenantSlug();
+    if (!slug) return;
+
+    const button = document.getElementById('submit-password-change');
+    button.disabled = true;
+
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/cambiar-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${tokenPendienteCambio}`,
+          'X-Tenant': slug,
+        },
+        body: JSON.stringify({
+          passwordActual: passwordInput.value,
+          passwordNueva: newPasswordInput.value,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'No se pudo cambiar la contraseña.');
+
+      localStorage.setItem('shemuel_token', data.token);
+      localStorage.setItem('shemuel_user', JSON.stringify(data.usuario));
+      window.location.href = 'dashboard.html';
+    } catch (err) {
+      showError(err.message);
     } finally {
       button.disabled = false;
     }

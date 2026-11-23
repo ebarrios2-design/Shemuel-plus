@@ -1,33 +1,148 @@
-1. Verificar Bases de Datos
+SHEMUEL PLUS - INSTALACION EN OTRA PC (WINDOWS)
+================================================
 
-PostgreSQL: Asegúrate de que el motor de base de datos local esté activo. Abrir pgAdmin y comprobar que la base de datos responde es la forma más rápida de validarlo.
+Esta guía conecta la aplicación de esta PC al PostgreSQL que ya existe en
+Supabase y al MongoDB Atlas del proyecto. No se instala PostgreSQL localmente.
+Necesitas acceso autorizado a las credenciales de ambos servicios.
 
-MongoDB Atlas: Como tu URI apunta a un clúster en la nube, solo necesitas confirmar que el equipo tenga conexión a internet para que el backend pueda enlazar los esquemas flexibles.
+1. Requisitos
+------------
+- Git y Node.js LTS.
+- Acceso al proyecto Supabase y a su contraseña de base de datos.
+- Acceso a la URI y usuario de MongoDB Atlas, si se usarán las funciones
+  documentales.
 
-2. Levantar el Backend (Lógica y API)
+No necesitas instalar PostgreSQL ni pgAdmin para usar la base Supabase existente.
 
-Abre tu primera terminal.
+2. Descargar el proyecto
+------------------------
+Abre PowerShell en la carpeta donde guardarás el proyecto y ejecuta:
 
-Navega a la ruta exacta del servidor: cd D:\UDI\Proyecto integrador 2026-2\shemuel plus\backend
+  git clone https://github.com/ebarrios2-design/Shemuel-plus.git
+  cd Shemuel-plus
 
-Inicia el servicio en modo desarrollo: npm run dev
+Si el repositorio es privado, inicia sesión en GitHub cuando Git lo solicite.
 
-Señal de éxito: La consola imprime [postgres] Conexion verificada y te indica que la aplicación está escuchando en el puerto 4000. (Minimiza esta terminal, no la cierres).
+3. Configurar acceso seguro a Supabase
+--------------------------------------
+Desde la carpeta del proyecto crea el archivo local de configuración:
 
-3. Levantar el Frontend (Interfaz Visual)
+  Copy-Item backend\.env.example backend\.env
 
-Abre una segunda terminal (una pestaña nueva).
+En el Dashboard de Supabase abre el proyecto y selecciona **Connect**. Copia la
+cadena de conexión PostgreSQL de **Session pooler** y sustituye la contraseña
+por la contraseña de base de datos del proyecto. Si la contraseña contiene
+caracteres especiales, codifícalos para URL antes de pegarlos en la URI.
 
-Navega a la carpeta donde viven tus archivos estáticos: cd D:\UDI\Proyecto integrador 2026-2\shemuel plus\frontend\public
+Descarga el certificado raíz en **Project Settings > Database > SSL
+Configuration** y guárdalo en:
 
-Ejecuta el servidor ligero: npx serve .
+  Shemuel-plus\backend\supabase-root.crt
 
-Señal de éxito: La terminal te mostrará un mensaje indicando que el contenido se está sirviendo en http://localhost:3000.
+Edita `backend\.env` en esta PC:
 
-4. Acceder al Entorno de Trabajo
+  PORT=4000
+  PG_CONNECTION_STRING=<URI Session pooler de Supabase>
+  PG_SSL=true
+  PG_SSL_ROOT_CERT=supabase-root.crt
 
-Abre tu navegador web.
+La variable `PG_CONNECTION_STRING` debe tener la URI real de Supabase, no el
+texto de ejemplo. Cuando está configurada, el backend usa Supabase en vez de las
+variables locales `PG_HOST`, `PG_PORT`, `PG_DATABASE`, `PG_USER` y `PG_PASSWORD`.
+No desactives la validación SSL.
 
-Carga la landing page inyectando el parámetro de tu institución: http://localhost:3000/index.html?tenant=udi
+No pegues la URI, contraseña ni certificado en chats o repositorios. No subas
+`backend\.env` ni `backend\supabase-root.crt` a Git.
 
-A partir de este punto, puedes abrir tu editor de código, realizar todos los cambios que quieras en el HTML o CSS, guardar el archivo y simplemente refrescar (F5) el navegador para ver los resultados al instante.
+4. Configurar MongoDB Atlas y JWT
+--------------------------------
+Si usarás talleres, entregas, observaciones u otras funciones documentales,
+configura `MONGO_URI` en `backend\.env` con la URI autorizada del clúster Atlas.
+En Atlas agrega la IP de esta PC a **Network Access** y confirma que el usuario
+de base de datos tenga acceso. Cada PC o red puede requerir autorización propia.
+
+Genera una clave JWT para esta instalación desde PowerShell:
+
+  node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
+Pon el resultado en `JWT_SECRET`. No reutilices valores del archivo `.env` de
+otra computadora ni compartas el secreto.
+
+5. Instalar dependencias
+------------------------
+En PowerShell:
+
+  cd backend
+  npm ci
+
+No ejecutes `npm run db:init` ni `npm run db:migrate:supabase`: esos comandos
+son para inicializar una base local o migrar datos, no para conectar otra PC a
+la base Supabase ya configurada.
+
+En Supabase abre SQL Editor y ejecuta una sola vez el contenido de
+`backend/database/migrations/004_idempotent_hours_credits.sql` para habilitar
+la acreditación idempotente de horas.
+
+6. Configurar y ejecutar los tres servicios
+---------------------------------
+En `backend\.env`, además de las variables de PostgreSQL, configura `MONGO_URI`,
+`JWT_SECRET` y `SACI_INTERNAL_TOKEN`. Genera valores aleatorios localmente:
+
+  node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+
+Usa una salida distinta para `JWT_SECRET` y `SACI_INTERNAL_TOKEN`. Configura
+ambos valores iguales en los entornos de SACI y SSRE, ya que ambos servicios
+validan los JWT y las llamadas internas. No compartas ni commitees estos valores.
+
+Desde la carpeta `backend`, abre tres ventanas de PowerShell y ejecuta un
+comando distinto en cada una:
+
+  npm run dev:gateway
+  npm run dev:saci
+  npm run dev:ssre
+
+Las terminales deben indicar que cada servicio escucha en los puertos 4000
+(gateway), 4001 (SACI) y 4002 (SSRE). Comprueba el gateway:
+
+  Invoke-RestMethod http://localhost:4000/health
+
+Debe responder con `status: ok`. Comprueba también
+`http://localhost:4001/health` y `http://localhost:4002/health`. Si falla la
+conexión a PostgreSQL, revisa la URI Session pooler, la contraseña, el
+certificado y `PG_SSL=true`. Si falla MongoDB, revisa `MONGO_URI` y la
+autorización de red en Atlas.
+
+7. Iniciar el frontend
+----------------------
+Abre otra ventana de PowerShell. Desde la carpeta raíz `Shemuel-plus` ejecuta:
+
+  cd frontend\public
+  npx --yes serve . --listen 3000
+
+Deja esta terminal abierta. El sitio quedará disponible en `http://localhost:3000`.
+
+8. Abrir la aplicación
+----------------------
+En el navegador entra a:
+
+  http://localhost:3000/index.html?tenant=udi
+
+El parámetro `tenant` selecciona la institución dentro de la base compartida;
+puedes usar `?tenant=uan` para la institución UAN si existe en ese proyecto.
+Inicia sesión con una cuenta ya registrada en Supabase para ese tenant. Solicita
+las credenciales de usuario al administrador; la contraseña demo solo funciona
+si esa cuenta está creada en la base compartida.
+
+9. Solución de problemas
+------------------------
+- Error de conexión PostgreSQL: verifica que `PG_CONNECTION_STRING` sea la URI
+  de **Session pooler**, que la contraseña sea correcta y que el certificado
+  esté en `backend\supabase-root.crt`.
+- Error de conexión MongoDB: confirma `MONGO_URI` y permite la IP actual en Atlas.
+- Error de tenant/institución: revisa el parámetro `?tenant=` y confirma que esa
+  institución exista en Supabase.
+- Puerto ocupado: cierra la aplicación que lo esté usando. Si cambias el puerto
+  del backend, actualiza también el puerto API configurado en
+  `frontend\public\js\tenant.js`.
+- Mantén abiertas las terminales del gateway, SACI, SSRE y frontend mientras
+  uses la aplicación.

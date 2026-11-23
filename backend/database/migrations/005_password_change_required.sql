@@ -1,0 +1,2 @@
+ALTER TABLE usuarios
+    ADD COLUMN IF NOT EXISTS requiere_cambio_password BOOLEAN NOT NULL DEFAULT FALSE;

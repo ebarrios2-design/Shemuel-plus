@@ -39,6 +39,7 @@ CREATE TABLE usuarios (
     password_hash   VARCHAR(255) NOT NULL,
     rol             rol_usuario NOT NULL,
     activo          BOOLEAN DEFAULT TRUE,
+    requiere_cambio_password BOOLEAN NOT NULL DEFAULT FALSE,
     creado_en       TIMESTAMPTZ DEFAULT now(),
     -- el mismo correo puede existir en dos universidades distintas,
     -- pero no repetirse dentro de la misma institucion
@@ -92,6 +93,21 @@ CREATE TABLE asignaciones_practica (
 CREATE INDEX idx_asignaciones_institucion ON asignaciones_practica(institucion_id);
 CREATE INDEX idx_asignaciones_estudiante ON asignaciones_practica(estudiante_id);
 CREATE INDEX idx_asignaciones_docente ON asignaciones_practica(docente_id);
+
+CREATE TABLE acreditaciones_horas (
+    id                  BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    institucion_id      UUID NOT NULL REFERENCES instituciones(id) ON DELETE CASCADE,
+    asignacion_id       UUID NOT NULL REFERENCES asignaciones_practica(id) ON DELETE CASCADE,
+    clave_idempotencia  VARCHAR(120) NOT NULL,
+    horas               INTEGER NOT NULL CHECK (horas IN (1, 3)),
+    creado_en           TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (institucion_id, clave_idempotencia)
+);
+
+CREATE INDEX idx_acreditaciones_horas_asignacion
+    ON acreditaciones_horas(asignacion_id);
+
+ALTER TABLE acreditaciones_horas ENABLE ROW LEVEL SECURITY;
 
 CREATE TYPE estado_solicitud_practica AS ENUM (
     'pendiente',

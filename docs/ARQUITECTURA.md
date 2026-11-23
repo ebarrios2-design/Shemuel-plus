@@ -110,16 +110,19 @@ Expone el login. Conecta `POST /api/auth/login` con el controlador `login`.
 
 Entrega información pública de una institución, como nombre, colores y logo. Es usada por el frontend para "vestirse" con la identidad visual del tenant.
 
-### `backend/src/routes/practicas.routes.js`
+### Servicios SACI y SSRE
 
-Agrupa las operaciones de práctica con autenticación y control de roles:
+`backend/src/apps/gateway.app.js` enruta las solicitudes del frontend por
+prefijo, sin parsear los cuerpos de las solicitudes para preservar cargas
+multipart y descargas. `practicas-saci.routes.js` contiene las rutas de
+PostgreSQL; `practicas-ssre.routes.js` contiene las rutas respaldadas por
+MongoDB.
 
-- `GET /asignaciones`
-- `POST /asignaciones`
-- `GET /planes-clase`
-- `POST /planes-clase`
-- `GET /observaciones`
-- `POST /observaciones`
+SSRE no consulta PostgreSQL directamente. Usa `services/saciClient.js` para
+validar tenant y asignaciones, y para acreditar horas a través de la API interna
+protegida por `SACI_INTERNAL_TOKEN`. La tabla `acreditaciones_horas` registra
+claves idempotentes para que reintentos de una entrega no dupliquen las horas.
+El gateway enruta únicamente tráfico público y no publica las rutas internas.
 
 ### `backend/src/routes/reportes.routes.js`
 
@@ -131,10 +134,9 @@ Realiza la autenticación del usuario, consulta en PostgreSQL por `institucion_i
 
 ### `backend/src/controllers/practicas.controller.js`
 
-Es el controlador más importante del negocio. Une dos persistencias:
-
-- PostgreSQL para asignaciones de práctica
-- MongoDB para planes y observaciones
+Contiene manejadores del dominio de prácticas registrados por rutas separadas:
+SACI ejecuta los manejadores relacionales y SSRE los documentales, con llamadas
+REST de SSRE a SACI cuando necesita validar una asignación o acreditar horas.
 
 ### `backend/src/controllers/reportes.controller.js`
 

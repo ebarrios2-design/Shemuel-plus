@@ -18,6 +18,14 @@ function requireAuth(req, res, next) {
       return res.status(403).json({ error: 'El token no corresponde a esta institucion.' });
     }
 
+    const rutaCambioPassword = (req.originalUrl || '').split('?')[0] === '/api/auth/cambiar-password';
+    if (payload.requiereCambioPassword && !rutaCambioPassword) {
+      return res.status(403).json({
+        error: 'Debes cambiar tu contraseña antes de continuar.',
+        code: 'PASSWORD_CHANGE_REQUIRED',
+      });
+    }
+
     req.user = payload; // { sub, institucionId, rol, email }
     next();
   } catch (err) {

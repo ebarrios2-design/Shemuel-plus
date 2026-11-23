@@ -76,8 +76,9 @@
             </div>
 
             <div class="field">
-              <label for="password-usuario">Contraseña</label>
-              <input id="password-usuario" type="password" placeholder="Dejar vacío para mantener la actual" />
+              <label for="password-usuario">Contraseña temporal</label>
+              <input id="password-usuario" type="password" required autocomplete="new-password" />
+              <small>Al asignar una contraseña, el usuario deberá cambiarla al iniciar sesión.</small>
             </div>
           </div>
 
@@ -282,7 +283,7 @@
           <p id="mensaje-taller" class="workshop-message" role="status" aria-live="polite"></p>
         </section>
 
-        <div class="form-grid">
+        <div class="form-grid" id="contenedor-asignacion-seguimiento" hidden>
           <div class="field">
             <label for="asignacion-seguimiento">Asignación activa</label>
             <select id="asignacion-seguimiento"></select>
@@ -298,7 +299,7 @@
           <button type="button" class="btn btn-primary" id="btn-registrar-horas">Registrar horas</button>
         </div>
 
-        <form id="form-plan-clase" class="admin-form" style="margin-top:20px;">
+        <form id="form-plan-clase" class="admin-form" style="margin-top:20px;" hidden>
           <h3>Plan de clase</h3>
           <div class="form-grid">
             <div class="field">
@@ -349,6 +350,8 @@
 <script>
   const token = localStorage.getItem('shemuel_token');
   const usuario = JSON.parse(localStorage.getItem('shemuel_user') || 'null');
+  const puedeAdministrarUsuarios = usuario
+    && ['director', 'institucion_receptora'].includes(usuario.rol);
 
   if (!token || !usuario) {
     window.location.href = 'login.html';
@@ -360,7 +363,7 @@
   const descripcionesPorRol = {
     estudiante: 'Entrega las actividades de tus talleres, completa quizzes y revisa tus horas de práctica.',
     docente_asesor: 'Crea talleres, revisa entregas y activa quizzes para tus asignaciones.',
-    institucion_receptora: 'Asignaciones vinculadas con tu institución receptora.',
+    institucion_receptora: 'Gestiona los usuarios, roles y accesos de esta institución.',
     director: 'Vista consolidada de las prácticas activas en tu programa.',
   };
   document.getElementById('rol-descripcion').textContent = descripcionesPorRol[usuario.rol] || '';
@@ -453,7 +456,7 @@
   }
 
   async function cargarRoles() {
-    if (usuario.rol !== 'director') return [];
+    if (!puedeAdministrarUsuarios) return [];
     const slug = detectarTenantSlug();
     const res = await fetch(`${API_BASE}/api/roles`, {
       headers: { Authorization: `Bearer ${token}`, 'X-Tenant': slug },
@@ -468,7 +471,7 @@
   }
 
   async function cargarUsuarios() {
-    if (usuario.rol !== 'director') return;
+    if (!puedeAdministrarUsuarios) return;
     const slug = detectarTenantSlug();
     const res = await fetch(`${API_BASE}/api/usuarios`, {
       headers: { Authorization: `Bearer ${token}`, 'X-Tenant': slug },
@@ -742,7 +745,7 @@
 
     document.getElementById('registro-horas-manual').hidden = true;
     document.getElementById('acciones-horas-manuales').hidden = true;
-    document.getElementById('form-plan-clase').hidden = usuario.rol !== 'estudiante';
+    document.getElementById('contenedor-asignacion-seguimiento').hidden = usuario.rol !== 'docente_asesor';
     document.getElementById('form-observacion').hidden = usuario.rol !== 'docente_asesor';
     if (usuario.rol === 'estudiante') {
       document.getElementById('tabs-estudiante').hidden = false;
@@ -1181,8 +1184,11 @@
     document.getElementById('usuario-id').value = '';
     document.getElementById('nombre-completo').value = '';
     document.getElementById('email-usuario').value = '';
-    document.getElementById('password-usuario').value = '';
     document.getElementById('usuario-activo').checked = true;
+    const passwordInput = document.getElementById('password-usuario');
+    passwordInput.value = '';
+    passwordInput.required = true;
+    passwordInput.placeholder = '';
     const select = document.getElementById('rol-usuario');
     if (select.options.length > 0) {
       select.selectedIndex = 0;
@@ -1205,8 +1211,10 @@
     document.getElementById('email-usuario').value = usuario.email;
     document.getElementById('usuario-activo').checked = usuario.activo;
     document.getElementById('rol-usuario').value = usuario.rol;
-    document.getElementById('password-usuario').value = '';
-    document.getElementById('password-usuario').placeholder = 'Dejar vacío para mantener la actual';
+    const passwordInput = document.getElementById('password-usuario');
+    passwordInput.value = '';
+    passwordInput.required = false;
+    passwordInput.placeholder = 'Dejar vacío para mantener la actual';
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
@@ -1427,9 +1435,11 @@
   cargarAsignaciones()
     .then(async () => {
       await cargarResumenSiEsDirector();
-      if (usuario.rol === 'director') {
+      if (puedeAdministrarUsuarios) {
         await cargarRoles();
         await cargarUsuarios();
+      }
+      if (usuario.rol === 'director') {
         await cargarSelectoresPracticas();
         await cargarSolicitudesDirector();
       }
